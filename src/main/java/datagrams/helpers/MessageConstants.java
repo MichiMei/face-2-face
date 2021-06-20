@@ -1,5 +1,7 @@
 package datagrams.helpers;
 
+import java.math.BigInteger;
+
 public class MessageConstants {
     private MessageConstants(){}
 
@@ -36,4 +38,11 @@ public class MessageConstants {
         System.out.println();
     }
 
+    public static boolean hasLessThan32Bytes(BigInteger bigInt){
+        if(bigInt.signum() == -1){
+            return bigInt.bitLength() <= 31*8;
+        }else{
+            return bigInt.bitLength() <= 32*8;
+        }
+    }
 }

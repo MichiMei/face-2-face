@@ -84,7 +84,7 @@ public class GenericMessage {
     public void setSenderNodeID(BigInteger senderNodeID) throws ArrayIndexOutOfBoundsException{
         System.out.println("BITLENGTHS: " + senderNodeID.bitLength());
         try{
-            if (senderNodeID.bitLength() / 8.0 > this.senderNodeID.length){
+            if (!MessageConstants.hasLessThan32Bytes(senderNodeID)){
                 throw new ArrayIndexOutOfBoundsException();
             }else {
                 this.senderNodeID = Arrays.copyOf(senderNodeID.toByteArray(), this.senderNodeID.length);

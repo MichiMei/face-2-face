@@ -8,7 +8,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 
 public class Tuples implements IPayload{
-    public class Tuple{
+    public static class Tuple{
         private int port;
         private InetAddress IpAddress;
         private NodeID nodeID;
@@ -50,7 +50,7 @@ public class Tuples implements IPayload{
     }
 
     public byte[] toBytestream() {
-        byte[] out = new byte[(noTuples * TUPLE_SIZE_BYTES) + 1];
+        byte[] out = new byte[(noTuples * TUPLE_SIZE_BYTES) + 4];
         byte[] noTuplesByte = ByteBuffer.allocate(4).putInt(noTuples).array();
         System.arraycopy(noTuplesByte, 0, out, 0, noTuplesByte.length);
         int currentPos = noTuplesByte.length;

@@ -20,6 +20,11 @@ public class EntryValue implements IPayload {
         this.setEntryValue(value);
     }
 
+    public EntryValue(){
+        this.isValueNotInfo = true;
+        this.entryValue = null;
+    }
+
     public void setEntryValue(byte[] in){
         this.entryValue = Arrays.copyOf(in, in.length);
     }

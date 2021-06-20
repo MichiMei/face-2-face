@@ -7,12 +7,14 @@ import java.util.Arrays;
 
 public class EntryKey implements IPayload{
     private byte[] EntryKey;
+    private byte[] EntryValue;
 
     public BigInteger getEntryKey(){
         return new BigInteger(EntryKey);
     }
     private EntryKey(){
         EntryKey = new byte[MessageConstants.ENTRYKEY_SIZE_BYTES];
+        EntryValue = null;
     }
 
     public EntryKey(BigInteger entryKey) throws ArrayIndexOutOfBoundsException{
@@ -51,11 +53,32 @@ public class EntryKey implements IPayload{
         }
     }
 
+    public void setEntryValue(byte[] in){
+        this.EntryValue = Arrays.copyOf(in, in.length);
+    }
+
     @Override
     public byte[] toBytestream() {
-        return Arrays.copyOf(this.EntryKey, this.EntryKey.length);
+        byte[] out = new byte[this.EntryKey.length + this.EntryValue.length];
+        System.arraycopy(this.EntryKey, 0, out, 0, this.EntryKey.length);
+        System.arraycopy(this.EntryValue, 0, out, this.EntryKey.length, this.EntryValue.length);
+        return out;
     }
     public static IPayload fromBytestream(byte[] in){
+        int EntryValueLength = in.length - MessageConstants.ENTRYKEY_SIZE_BYTES;
+        byte[] EntryKey = new byte[MessageConstants.ENTRYKEY_SIZE_BYTES];
+        byte[] EntryValue = new byte[EntryValueLength];
+
+        System.arraycopy(in, 0, EntryKey, 0, MessageConstants.ENTRYKEY_SIZE_BYTES);
+        System.arraycopy(in, MessageConstants.ENTRYKEY_SIZE_BYTES, EntryValue, 0, EntryValueLength);
+
+        EntryKey entryKey = new EntryKey();
+        entryKey.setEntryKey(EntryKey);
+        entryKey.setEntryValue(EntryValue);
+
+        return entryKey;
+
+        /*
         try{
             if(in.length > MessageConstants.ENTRYKEY_SIZE_BYTES){
                 throw new ArrayIndexOutOfBoundsException();
@@ -67,6 +90,7 @@ public class EntryKey implements IPayload{
             e.printStackTrace();
         }
         return null;
+         */
     }
 
     public void print() {
@@ -75,5 +99,7 @@ public class EntryKey implements IPayload{
         MessageConstants.prettyPrintByteArray(this.EntryKey);
         System.out.println("AS BIGINTEGER:");
         System.out.println(new BigInteger(this.EntryKey).toString());
+        System.out.println("ENTRYVALUE: ");
+        MessageConstants.prettyPrintByteArray(this.EntryValue);
     }
 }

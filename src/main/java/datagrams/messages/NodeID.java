@@ -18,10 +18,10 @@ public class NodeID implements IPayload{
 
     public void setNodeID(BigInteger nodeID) throws ArrayIndexOutOfBoundsException{
         try{
-            if(nodeID.bitCount() / 8.0 > MessageConstants.NODEID_SIZE_BYTES){
+            if(!MessageConstants.hasLessThan32Bytes(nodeID)){
                 throw new ArrayIndexOutOfBoundsException();
             }else{
-                this.NodeID = nodeID.toByteArray();
+                this.NodeID = Arrays.copyOf(nodeID.toByteArray(), MessageConstants.NODEID_SIZE_BYTES);
             }
         }catch (Exception e){
             System.err.println("BigInteger zu groß für NodeID!");
