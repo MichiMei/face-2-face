@@ -1,10 +1,12 @@
 package huberlin.p2projekt21.controller;
 
+import huberlin.p2projekt21.kademlia.KademliaInstance;
 import huberlin.p2projekt21.networking.Receiver;
 import huberlin.p2projekt21.networking.Sender;
 
 import java.io.IOException;
 import java.net.DatagramPacket;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.channels.DatagramChannel;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -15,6 +17,7 @@ public class Controller {
     private DatagramChannel socket;
     private Sender sender;
     private Receiver receiver;
+    private KademliaInstance kademlia;
 
     Controller(int port){
         this.port = port;
@@ -35,11 +38,18 @@ public class Controller {
 
         this.sender.start();
         this.receiver.start();
+
+        InetAddress address = null;     // TODO get bootstrapping ip
+        int port = -1;                  // TODO get bootstrapping port
+        this.kademlia = new KademliaInstance(receiverChannel, senderChannel, address, port);
+
+        this.kademlia.start();
     }
 
     public void terminate() throws IOException {
         this.sender.terminate();
         this.receiver.terminate();
+        this.kademlia.stop();
         this.socket.close();
     }
 }

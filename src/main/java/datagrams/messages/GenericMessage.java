@@ -91,7 +91,7 @@ public class GenericMessage {
             }
         }catch(Exception e){
             System.err.println("SenderNodeID BigInteger zu groß!");
-            e.printStackTrace();;
+            e.printStackTrace();
         }
     }
     public void setSenderNodeID(){
@@ -112,6 +112,7 @@ public class GenericMessage {
     public void setPayload(IPayload payload){
         this.payload = payload;
     }
+    public IPayload getPayload() { return this.payload; }
 
     private byte[] toByteArray() {
         byte[] payloadStream = null;
@@ -184,5 +185,13 @@ public class GenericMessage {
         if(payload != null){
             payload.print();
         }
+    }
+
+    public InetAddress getSenderIP() {
+        return senderIP;
+    }
+
+    public int getSenderPort() {
+        return senderPort;
     }
 }

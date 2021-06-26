@@ -41,7 +41,7 @@ public class KBuckets {
      * @param ls time-stamp of the received message
      * @return InetSocketAddress of a node to ping (can be null)
      */
-    public InetSocketAddress update(BigInteger id, InetAddress address, int port, long ls) {
+    public KademliaNode update(BigInteger id, InetAddress address, int port, long ls) {
         int bucketID = bucketID(id);
         assert (bucketID > 0);
         assert (bucketID < bucketCount);
@@ -130,7 +130,7 @@ public class KBuckets {
          * @param ls time-stamp of the received message
          * @return InetSocketAddress of a node to ping (can be null)
          */
-        public synchronized InetSocketAddress update(BigInteger id, InetAddress address, int port, long ls) {
+        public synchronized KademliaNode update(BigInteger id, InetAddress address, int port, long ls) {
             // check if contained
             for (var elem : elements) {
                 if (elem.getId().equals(id)) {
@@ -155,7 +155,7 @@ public class KBuckets {
                 if (elem.compareTo(oldest) < 0) oldest = elem;
             }
             assert (oldest != null);
-            return new InetSocketAddress(oldest.getAddress(), oldest.getPort());
+            return oldest.node;
         }
 
         /**
