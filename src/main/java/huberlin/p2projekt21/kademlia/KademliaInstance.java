@@ -6,6 +6,7 @@ import datagrams.messages.GenericMessage;
 import datagrams.messages.NodeID;
 import datagrams.messages.Tuples;
 
+import java.awt.*;
 import java.math.BigInteger;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
@@ -22,6 +23,8 @@ public class KademliaInstance implements Runnable{
     public static final int RANDOM_ID_LENGTH = 160;
     public static final int K = 20;
     public static final int ALPHA = 3;
+    public static final int BOOTSTRAPPING_TRIES = 5;
+    public static final long BOOTSTRAPPING_TIMEOUT = 60 * 1000;
 
     private final ConcurrentLinkedDeque<DatagramPacket> incomingChannel;
     private final ConcurrentLinkedDeque<DatagramPacket> outgoingChannel;
@@ -33,6 +36,15 @@ public class KademliaInstance implements Runnable{
     private final KBuckets kBuckets;
     private final Map<BigInteger, BigInteger> requestMap;
 
+    /**
+     * Create a new Kademlia instance
+     * to start the background task call object.start() afterwards
+     *
+     * @param incomingChannel datagram channel for incoming messages
+     * @param outgoingChannel datagram channel for outgoing messages
+     * @param address InetAddress of the bootstrapping peer (null -> no bootstrapping)
+     * @param port port of the bootstrapping peer
+     */
     public KademliaInstance(ConcurrentLinkedDeque<DatagramPacket> incomingChannel, ConcurrentLinkedDeque<DatagramPacket> outgoingChannel, InetAddress address, int port) {
         this.incomingChannel = incomingChannel;
         this.outgoingChannel = outgoingChannel;
@@ -220,7 +232,74 @@ public class KademliaInstance implements Runnable{
         }
         assert (port >= 0);
         assert (port <= 65535);
-        // TODO send FindNode(nodeID)
+
+        // bootstrapping asynchronously to allow main thread to continue
+        new Thread(() -> {
+            try {
+                for (int tries = 0; tries < BOOTSTRAPPING_TRIES; tries++) {
+                    BigInteger randomID = bootstrappingPing(address, port);     // send ping
+                    if (bootstrappingWait(randomID)) break;                             // answer received?
+                }
+                // TODO bootstrapping failed
+            } catch (Exception e) {
+                // TODO bootstrapping failed
+                e.printStackTrace();
+            }
+
+            //noinspection ResultOfMethodCallIgnored
+            lookup(ownID);
+        }).start();
+    }
+
+    /**
+     * Bootstrapping: send ping
+     *
+     * @param address bootstrapping ip address
+     * @param port bootstrapping port
+     * @return randomId of the send ping
+     * @throws Exception thrown by GenericMessage
+     */
+    private BigInteger bootstrappingPing(InetAddress address, int port) throws Exception {
+        GenericMessage ping = new GenericMessage(null, -1, address, port);
+        // send Ping to bootstrapping address (to get first kademlia id)
+        ping.setSenderNodeID(ownID);
+        BigInteger randomId = getRandomID();
+        ping.setRandomID(randomId);
+        ping.setTypeHeader(MessageConstants.TYPE_PING);
+        outgoingChannel.add(ping.toDatagram());
+        return randomId;
+    }
+
+    /**
+     * Bootstrapping: Wait for pong
+     * returns after BOOTSTRAPPING_TIMEOUT or when correct answer received
+     *
+     * @param randomId randomId of the ping
+     * @return true if successful, false if timeout exceeded
+     * @throws Exception thrown by GenericMessage
+     */
+    private boolean bootstrappingWait(BigInteger randomId) throws Exception {
+        long end = System.currentTimeMillis() + BOOTSTRAPPING_TIMEOUT;
+
+        // wait for (correct) response
+        while (System.currentTimeMillis() < end) {
+            if (!incomingChannel.isEmpty()) {
+                // handle pong
+                GenericMessage pong = new GenericMessage();
+                DatagramPacket response = incomingChannel.poll();
+                assert (response != null);
+                pong.fromDatagramPacket(response);
+                if (pong.getTypeHeader().byteValueExact() != MessageConstants.TYPE_PONG) continue;
+                if (!pong.getRandomID().equals(randomId)) continue;
+                // add node to kBuckets
+                kBuckets.update(pong.getSenderNodeID(), pong.getSenderIP(), pong.getSenderPort(), System.currentTimeMillis());
+                return true;
+            }
+            Thread.sleep(100);
+        }
+
+        // no response received until timeout
+        return false;
     }
 
     /**
