@@ -20,10 +20,14 @@ public class KademliaInstance implements Runnable{
     public static final int RANDOM_ID_LENGTH = 160;
     public static final int K = 20;
     public static final int ALPHA = 3;
+    // determines how often bootstrapping is retried [1..]
     public static final int BOOTSTRAPPING_TRIES = 5;
-    public static final long BOOTSTRAPPING_TIMEOUT = 60 * 1000;     // in millis
-    public static final long POLL_TIMEOUT = 1000;                   // in millis
-    public static final long REQUEST_TIMEOUT = 10 * 1000;           // in millis
+    // timeout until bootstrapping is retried in millis
+    public static final long BOOTSTRAPPING_TIMEOUT = 60 * 1000;
+    // timeout until new lookup messages are send in millis
+    public static final long POLL_TIMEOUT = 1000;
+    // timeout until lookup-request is considered unanswered in millis
+    public static final long REQUEST_TIMEOUT = 10 * 1000;
 
     private final ConcurrentLinkedDeque<DatagramPacket> incomingChannel;
     private final ConcurrentLinkedDeque<DatagramPacket> outgoingChannel;
@@ -77,7 +81,7 @@ public class KademliaInstance implements Runnable{
                 if (decodeMessage(msg)) continue;
 
                 // update kBucket
-                KademliaNode node = kBuckets.update(msg.getSenderNodeID(), msg.getSenderIP(), msg.getSenderPort(), System.currentTimeMillis());
+                KademliaNode node = kBuckets.update(new KademliaNode(msg.getSenderNodeID(), msg.getSenderIP(), msg.getSenderPort()), System.currentTimeMillis());
                 if (node != null) {
                     GenericMessage ping = new GenericMessage(null, -1, node.getAddress(), node.getPort());
                     ping.setSenderNodeID(ownID);
@@ -131,7 +135,7 @@ public class KademliaInstance implements Runnable{
                 // TODO parse payload
                 // TODO store message
             }
-            // TODO Store reply missing
+            // TODO Store reply missing? probably not even necessary
             case MessageConstants.TYPE_FINDNODE -> {
                 // parse payload
                 NodeID payloadMsg = (NodeID) msg.getPayload();
@@ -212,7 +216,7 @@ public class KademliaInstance implements Runnable{
      * @return data associated with the key (or null)
      */
     public byte[] getValue(BigInteger key) {
-        // TODO
+        // TODO implement method
         return null;
     }
 
@@ -223,7 +227,7 @@ public class KademliaInstance implements Runnable{
      * @return TODO probably return void?
      */
     public boolean store(BigInteger key, byte[] data) {
-        // TODO
+        // TODO implement method
         return false;
     }
 
@@ -301,7 +305,7 @@ public class KademliaInstance implements Runnable{
                 if (pong.getTypeHeader().byteValueExact() != MessageConstants.TYPE_PONG) continue;
                 if (!pong.getRandomID().equals(randomId)) continue;
                 // add node to kBuckets
-                kBuckets.update(pong.getSenderNodeID(), pong.getSenderIP(), pong.getSenderPort(), System.currentTimeMillis());
+                kBuckets.update(new KademliaNode(pong.getSenderNodeID(), pong.getSenderIP(), pong.getSenderPort()), System.currentTimeMillis());
                 return true;
             }
             Thread.sleep(100);
@@ -486,7 +490,7 @@ public class KademliaInstance implements Runnable{
      * @return value if available, null otherwise
      */
     private byte[] getValueStub(BigInteger key) {
-        // TODO
+        // TODO implement method
         return null;
     }
 

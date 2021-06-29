@@ -34,25 +34,6 @@ public class KBuckets {
      * If the appropriate bucket has free space, insert that node
      * If the appropriate bucket contains dead nodes, replace them with this node
      *
-     * @param id kademlia node id of the node
-     * @param address ip-address of the node
-     * @param port port of the node
-     * @param ls time-stamp of the received message
-     * @return InetSocketAddress of a node to ping (can be null)
-     */
-    public KademliaNode update(BigInteger id, InetAddress address, int port, long ls) {
-        int bucketID = bucketID(id);
-        assert (bucketID > 0);
-        assert (bucketID < bucketCount);
-        return buckets[bucketID].update(new KademliaNode(id, address, port), ls);
-    }
-
-    /**
-     * Kademlia received a message of the given node
-     * If the node is already contained in a bucket, update that entry
-     * If the appropriate bucket has free space, insert that node
-     * If the appropriate bucket contains dead nodes, replace them with this node
-     *
      * @param node kademlia-node to update
      * @param ls time-stamp of the received message
      * @return InetSocketAddress of a node to ping (can be null)
