@@ -1,13 +1,12 @@
 package huberlin.p2projekt21;
 
+import huberlin.p2projekt21.kademlia.DistanceComparator;
 import huberlin.p2projekt21.kademlia.KBuckets;
 import huberlin.p2projekt21.kademlia.KademliaNode;
 import org.junit.Test;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
-
-import static huberlin.p2projekt21.kademlia.KBuckets.getCompareKademliaDistances;
 
 /**
  * Unit test KBuckets
@@ -38,9 +37,9 @@ public class KBucketTest {
         KademliaNode n1 = new KademliaNode(BigInteger.valueOf(2), null, -1);
         KademliaNode n2 = new KademliaNode(BigInteger.valueOf(3), null, -1);
         ArrayList<KademliaNode> list = new ArrayList<>(3);
-        list.add(n0);list.add(n1);list.add(n2);
+        list.add(n0);list.add(n2);list.add(n1);
 
-        list.sort(getCompareKademliaDistances(reference));
+        list.sort(DistanceComparator.getCompareKademliaDistances(reference));
 
         assert (list.get(0) == n2);
         assert (list.get(1) == n1);

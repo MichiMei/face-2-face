@@ -2,7 +2,6 @@ package huberlin.p2projekt21.kademlia;
 
 import java.math.BigInteger;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.util.*;
 
 public class KBuckets {
@@ -45,7 +44,24 @@ public class KBuckets {
         int bucketID = bucketID(id);
         assert (bucketID > 0);
         assert (bucketID < bucketCount);
-        return buckets[bucketID].update(id, address, port, ls);
+        return buckets[bucketID].update(new KademliaNode(id, address, port), ls);
+    }
+
+    /**
+     * Kademlia received a message of the given node
+     * If the node is already contained in a bucket, update that entry
+     * If the appropriate bucket has free space, insert that node
+     * If the appropriate bucket contains dead nodes, replace them with this node
+     *
+     * @param node kademlia-node to update
+     * @param ls time-stamp of the received message
+     * @return InetSocketAddress of a node to ping (can be null)
+     */
+    public KademliaNode update(KademliaNode node, long ls) {
+        int bucketID = bucketID(node.getId());
+        assert (bucketID > 0);
+        assert (bucketID < bucketCount);
+        return buckets[bucketID].update(node, ls);
     }
 
     /**
@@ -124,16 +140,14 @@ public class KBuckets {
          * If this bucket has free space, insert that node
          * Otherwise add to cache and return node to ping
          *
-         * @param id kademlia node id of the node
-         * @param address ip-address of the node
-         * @param port port of the node
+         * @param node kademlia node to update
          * @param ls time-stamp of the received message
          * @return InetSocketAddress of a node to ping (can be null)
          */
-        public synchronized KademliaNode update(BigInteger id, InetAddress address, int port, long ls) {
+        public synchronized KademliaNode update(KademliaNode node, long ls) {
             // check if contained
             for (var elem : elements) {
-                if (elem.getId().equals(id)) {
+                if (elem.getId().equals(node.getId())) {
                     elem.update(ls);
                     return null;
                 }
@@ -141,14 +155,14 @@ public class KBuckets {
 
             // free space
             if (elements.size() < bucketLength) {
-                elements.add(new NodeValues(id, address, port, ls));
+                elements.add(new NodeValues(node, ls));
                 return null;
             }
 
             // add to cache, return "oldest" nodes address
             cachePos = (cachePos+1)%cache.length;   // move cache-pointer to next position
             assert (cachePos >= 0 && cachePos < cache.length);
-            cache[cachePos] = new NodeValues(id, address, port, ls);
+            cache[cachePos] = new NodeValues(node, ls);
 
             NodeValues oldest = null;
             for (var elem : elements) {
@@ -171,7 +185,7 @@ public class KBuckets {
                 for (var elem : elements) result.add(elem.node);
             }
             if (result.size() > number) {
-                result.sort(getCompareKademliaDistances(id));
+                result.sort(DistanceComparator.getCompareKademliaDistances(id));
                 result = result.subList(0, number);
             }
             assert (result.size() <= number);
@@ -238,19 +252,4 @@ public class KBuckets {
         }
     }
 
-    /**
-     * Compares nodes considering their distance to the reference id
-     * @param id reference id
-     * @return Comparator
-     */
-    public static Comparator<KademliaNode> getCompareKademliaDistances(BigInteger id) {
-        return new Comparator<>() {
-            @Override
-            public int compare(KademliaNode n1, KademliaNode n2) {
-                BigInteger d1 = n1.getId().xor(id);
-                BigInteger d2 = n2.getId().xor(id);
-                return d1.compareTo(d2);
-            }
-        };
-    }
 }
