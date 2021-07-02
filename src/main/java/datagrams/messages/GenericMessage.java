@@ -91,7 +91,7 @@ public class GenericMessage {
             }
         }catch(Exception e){
             System.err.println("SenderNodeID BigInteger zu groß!");
-            e.printStackTrace();;
+            e.printStackTrace();
         }
     }
     public void setSenderNodeID(){
@@ -112,6 +112,7 @@ public class GenericMessage {
     public void setPayload(IPayload payload){
         this.payload = payload;
     }
+    public IPayload getPayload() { return this.payload; }
 
     private byte[] toByteArray() {
         byte[] payloadStream = null;
@@ -172,7 +173,8 @@ public class GenericMessage {
 
     public void print(){
         System.out.println("Printing GenericMessage");
-        System.out.println("From: " + this.senderIP.toString() + ":" + this.senderPort + " To: " + this.receiverIP.toString() + ":" + this.receiverPort);
+        if (this.senderIP != null) System.out.print("From: " + this.senderIP.toString() + ":" + this.senderPort + " ");
+        if (this.receiverIP != null) System.out.println("To: " + this.receiverIP.toString() + ":" + this.receiverPort);
         System.out.println("Type: " + this.typeHeader[0]);
         System.out.println("NodeID");
         MessageConstants.prettyPrintByteArray(this.senderNodeID);
@@ -184,5 +186,13 @@ public class GenericMessage {
         if(payload != null){
             payload.print();
         }
+    }
+
+    public InetAddress getSenderIP() {
+        return senderIP;
+    }
+
+    public int getSenderPort() {
+        return senderPort;
     }
 }
