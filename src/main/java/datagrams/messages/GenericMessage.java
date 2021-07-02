@@ -173,7 +173,8 @@ public class GenericMessage {
 
     public void print(){
         System.out.println("Printing GenericMessage");
-        System.out.println("From: " + this.senderIP.toString() + ":" + this.senderPort + " To: " + this.receiverIP.toString() + ":" + this.receiverPort);
+        if (this.senderIP != null) System.out.print("From: " + this.senderIP.toString() + ":" + this.senderPort + " ");
+        if (this.receiverIP != null) System.out.println("To: " + this.receiverIP.toString() + ":" + this.receiverPort);
         System.out.println("Type: " + this.typeHeader[0]);
         System.out.println("NodeID");
         MessageConstants.prettyPrintByteArray(this.senderNodeID);

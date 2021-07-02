@@ -3,6 +3,7 @@ package huberlin.p2projekt21.kademlia;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.util.*;
+import java.util.logging.Logger;
 
 public class KBuckets {
     public static final int CACHE_SIZE = 3;
@@ -39,10 +40,16 @@ public class KBuckets {
      * @return InetSocketAddress of a node to ping (can be null)
      */
     public KademliaNode update(KademliaNode node, long ls) {
+        if (node.getId().equals(referenceID)) return null;  // don't insert own id
         int bucketID = bucketID(node.getId());
-        assert (bucketID > 0);
+        assert (bucketID >= 0);
         assert (bucketID < bucketCount);
-        return buckets[bucketID].update(node, ls);
+
+        KademliaNode res = buckets[bucketID].update(node, ls);
+        long size = 0;
+        for (var bucket : buckets) size += bucket.size();
+        Logger.getGlobal().info("KBuckets size: " + size);
+        return res;
     }
 
     /**
@@ -98,7 +105,7 @@ public class KBuckets {
      */
     private int bucketID(BigInteger id) {
         BigInteger dist = referenceID.xor(id);
-        return dist.bitLength()-1;
+        return Math.max(dist.bitLength()-1, 0); // Edge case own id: -> dist = 0 -> dist.bitLength()-1 == -1
     }
 
     public static class KBucket {
@@ -192,6 +199,15 @@ public class KBuckets {
                     return;
                 }
             }
+        }
+
+        /**
+         * Get number of elements contained
+         *
+         * @return number of elements
+         */
+        public synchronized long size() {
+            return elements.size();
         }
 
         public static class NodeValues implements Comparable<NodeValues> {
