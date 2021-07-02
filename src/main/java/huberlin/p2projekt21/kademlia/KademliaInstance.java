@@ -28,7 +28,7 @@ public class KademliaInstance implements Runnable{
     // timeout until new lookup messages are send in millis
     public static final long POLL_TIMEOUT = 1000;
     // timeout until lookup-request is considered unanswered in millis
-    public static final long REQUEST_TIMEOUT = 10 * 1000;
+    public static final long REQUEST_TIMEOUT = 2 * 1000;
 
     private final ConcurrentLinkedDeque<DatagramPacket> incomingChannel;
     private final ConcurrentLinkedDeque<DatagramPacket> outgoingChannel;
@@ -37,6 +37,7 @@ public class KademliaInstance implements Runnable{
     private final AtomicBoolean running;
     private final Thread mainThread;
     private final Logger logger;
+    private BackgroundTasks backgroundTasks;
 
     private final KBuckets kBuckets;
     // maps randomIDs to (receiverID, sendTime, receiverChannel)
@@ -59,6 +60,7 @@ public class KademliaInstance implements Runnable{
         running = new AtomicBoolean(true);
         mainThread = new Thread(this);
         logger = Logger.getGlobal();
+        logger.info("ownID: " + ownID.toString(16));
 
         kBuckets = new KBuckets(K, NODE_ID_LENGTH, ownID);
         requestMap = new ConcurrentHashMap<>();
@@ -298,6 +300,7 @@ public class KademliaInstance implements Runnable{
             logger.info("starting main thread");
             this.running.set(true);
             this.mainThread.start();
+            backgroundTasks = new BackgroundTasks(kBuckets, requestMap, this::nodeLookup, ownID);
             return;
         }
         logger.info("start bootstrapping");
@@ -314,7 +317,7 @@ public class KademliaInstance implements Runnable{
                         logger.info("starting main thread");
                         this.running.set(true);
                         this.mainThread.start();
-
+                        backgroundTasks = new BackgroundTasks(kBuckets, requestMap, this::nodeLookup, ownID);
                         nodeLookup(ownID);
                         logger.info("bootstrapping finished");
                         break;
@@ -404,6 +407,7 @@ public class KademliaInstance implements Runnable{
      */
     private List<KademliaNode> nodeLookup(BigInteger id) throws Exception {
         logger.info("nodeLookup(" + id.toString(16) + ")");
+        kBuckets.nodeLookupPerformed(id);
         // create lookup id
         long lookupId;
         BlockingQueue<GenericMessage> channel = new LinkedBlockingDeque<>();
@@ -415,9 +419,13 @@ public class KademliaInstance implements Runnable{
         // status{ 0->new; >0-> asked (number corresponds to ask-time); -1->answered }
         Map<KademliaNode, Long> closest = new TreeMap<>(DistanceComparator.getCompareKademliaDistances(id));
         var tmp = kBuckets.lookup(id, K);
+        if (tmp.size() == 0) {
+            logger.warning("lookup ended as kBuckets are empty");
+            return new ArrayList<>();
+        }
         for (var elem : tmp) closest.put(elem, (long) 0);
 
-        int kFactor = 1;
+        //int kFactor = 1;
 
         // recursive until closest k nodes responded:
         while (true) {
@@ -444,65 +452,59 @@ public class KademliaInstance implements Runnable{
                 }
             }
             // EdgeCase: all nodes asked -> add more nodes
-            if (send == 0) {
+            /*if (send == 0) {
                 kFactor++;
                 // get more close nodes
                 tmp = kBuckets.lookup(id, K*kFactor);
                 for (var elem : tmp) closest.putIfAbsent(elem, (long) 0);
-            }
+            }*/
 
             // wait for incoming replies (TIMEOUT -> continue, edge case all queried)
             GenericMessage next = channel.poll(POLL_TIMEOUT, TimeUnit.MILLISECONDS);
             if (next == null) {
                 // timeout exceeded -> send further messages
                 logger.warning("no reply received (timeout)");
-                continue;
-            }
-
-            // mark as answered
-            closest.put(new KademliaNode(next.getSenderNodeID(), next.getSenderIP(), next.getSenderPort()), (long)-1);
-            logger.info("received response " + next.getSenderNodeID().toString(16));
-
-            // get received nodes
-            Tuples payload = (Tuples) next.getPayload();
-            Tuples.Tuple[] tuples;
-            if (payload == null) {
-                tuples = new Tuples.Tuple[0];
-                logger.warning("received 0 nodes");
             } else {
-                tuples = payload.getTuplesAsArray();
-                logger.warning("received " + tuples.length + " nodes");
+
+                // mark as answered
+                closest.put(new KademliaNode(next.getSenderNodeID(), next.getSenderIP(), next.getSenderPort()), (long) -1);
+                logger.info("received response " + next.getSenderNodeID().toString(16));
+
+                // get received nodes
+                Tuples payload = (Tuples) next.getPayload();
+                Tuples.Tuple[] tuples;
+                if (payload == null) {
+                    tuples = new Tuples.Tuple[0];
+                    logger.warning("received 0 nodes");
+                } else {
+                    tuples = payload.getTuplesAsArray();
+                    logger.warning("received " + tuples.length + " nodes");
+                }
+                // I'm proud of this... OK?!? (transforms a array of tuples to a map, mapping KademliaNodes to status 0)
+                //var list = Arrays.stream(tuples.clone()).map(tuple -> new KademliaNode(tuple.getNodeID().getNodeID(), tuple.getIpAddress(), tuple.getPort())).collect(Collectors.toMap(n -> n, n -> (long)0));
+
+                // transforms array of Tuples to list of KademliaNodes
+                var nodeList = Arrays.stream(tuples.clone()).map(t -> new KademliaNode(t.getNodeID().getNodeID(), t.getIpAddress(), t.getPort())).collect(Collectors.toList());
+
+                for (KademliaNode node : nodeList) {
+                    if (node.getId().equals(ownID)) continue;   // skip own id
+                    // add to kBucket
+                    kBuckets.update(node, 0);
+                    // add to closest (if not present)
+                    closest.putIfAbsent(node, (long) 0);
+                    logger.info("added to closest: " + node.getId().toString(16));
+                }
             }
-            // I'm proud of this... OK?!? (transforms a array of tuples to a map, mapping KademliaNodes to status 0)
-            //var list = Arrays.stream(tuples.clone()).map(tuple -> new KademliaNode(tuple.getNodeID().getNodeID(), tuple.getIpAddress(), tuple.getPort())).collect(Collectors.toMap(n -> n, n -> (long)0));
-
-            // transforms array of Tuples to list of KademliaNodes
-            var nodeList = Arrays.stream(tuples.clone()).map(t -> new KademliaNode(t.getNodeID().getNodeID(), t.getIpAddress(), t.getPort())).collect(Collectors.toList());
-
-            for (KademliaNode node : nodeList) {
-                if (node.getId().equals(ownID)) continue;   // skip own id
-                // add to kBucket
-                kBuckets.update(node, 0);
-                // add to closest (if not present)
-                closest.putIfAbsent(node, (long)0);
-            }
-
-            // add to kBuckets
-            /*for (var elem : list.keySet()) {
-                if (elem.getId() == ownID) continue;    // don't add own id
-                kBuckets.update(elem, 0);
-            }*/
-
-            // add nodes to closest list
-            //closest.putAll(list);
 
             // remove 'silent' nodes from list
             long time = System.currentTimeMillis();
             int count = 0;
-            for (var entry : closest.entrySet()) {
+            var removeIterator = closest.entrySet().iterator();
+            while (removeIterator.hasNext()) {
+                var entry = removeIterator.next();
                 long entryVal = entry.getValue();
                 if (entryVal > 0 && time > entryVal+REQUEST_TIMEOUT) {  // Request unanswered -> remove
-                    closest.remove(entry.getKey());
+                    removeIterator.remove();
                     count++;
                 }
             }
@@ -527,6 +529,7 @@ public class KademliaInstance implements Runnable{
             }
         }
 
+        kBuckets.nodeLookupPerformed(id);
         lookupChannels.remove(lookupId);
         // collects first (closest) K entries of 'closest' and returns their keys
         return closest.entrySet().stream().limit(K).map(Map.Entry::getKey).collect(Collectors.toList());

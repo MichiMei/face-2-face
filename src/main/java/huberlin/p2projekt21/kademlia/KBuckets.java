@@ -61,7 +61,7 @@ public class KBuckets {
      */
     public List<KademliaNode> lookup(BigInteger id, int number) {
         // get number elements of closest bucket
-        int closest = bucketID(id);
+        int closest = Math.max(bucketID(id), 0);    // can be -1 if id==referenceID
         List<KademliaNode> result = buckets[closest].lookup(id, number);
 
         // fill with "smaller" buckets
@@ -92,20 +92,51 @@ public class KBuckets {
      * @param id of the pinged node
      */
     public void pingExpired(BigInteger id) {
+        if (id.equals(referenceID)) return;  // skip own id
         int index = bucketID(id);
         assert (index >= 0 && index < bucketCount);
         buckets[index].pingExpired(id);
     }
 
     /**
+     * Get the time in millis of the last performed nodeLookup on the specified kBucket
+     *
+     * @param index index of the specific kBucket
+     * @return time of the last nodeLookup in millis
+     */
+    public long getLastLookup(int index) {
+        assert (index >= 0);
+        assert (index < bucketCount);
+        return buckets[index].getLastLookup();
+    }
+
+    /**
+     * Notify bucket of performed nodeLookup
+     */
+    public void nodeLookupPerformed(BigInteger id) {
+        if (id.equals(referenceID)) return; // skip own id
+        int index = bucketID(id);
+        buckets[index].nodeLookupPerformed();
+    }
+
+    /**
+     * Returns number of kBuckets
+     *
+     * @return number of kBuckets
+     */
+    public int getBucketCount() {
+        return bucketCount;
+    }
+
+    /**
      * Calculate the id of the bucket responsible for the given ID
      *
      * @param id ID of a searched node or value
-     * @return bucket responsible for the id
+     * @return bucket responsible for the id (-1 is returned when id==referenceID)
      */
-    private int bucketID(BigInteger id) {
+    public int bucketID(BigInteger id) {
         BigInteger dist = referenceID.xor(id);
-        return Math.max(dist.bitLength()-1, 0); // Edge case own id: -> dist = 0 -> dist.bitLength()-1 == -1
+        return dist.bitLength()-1;
     }
 
     public static class KBucket {
@@ -114,12 +145,14 @@ public class KBuckets {
         private final ArrayList<NodeValues> elements;
         private final NodeValues[] cache;   // Override-Ring-Buffer
         private int cachePos;
+        private long lastLookup;
 
         public KBucket(int k, int cL) {
             this.bucketLength = k;
             elements = new ArrayList<>(1);
             cache = new NodeValues[cL];
             cachePos = cL-1;
+            lastLookup = 0;
         }
 
         /**
@@ -208,6 +241,22 @@ public class KBuckets {
          */
         public synchronized long size() {
             return elements.size();
+        }
+
+        /**
+         * Get the time in millis of the last performed nodeLookup
+         *
+         * @return time of the last nodeLookup in millis
+         */
+        public synchronized long getLastLookup() {
+            return lastLookup;
+        }
+
+        /**
+         * Notify bucket of performed nodeLookup
+         */
+        public synchronized void nodeLookupPerformed() {
+            this.lastLookup = System.currentTimeMillis();
         }
 
         public static class NodeValues implements Comparable<NodeValues> {
