@@ -34,7 +34,7 @@ public class StatusTcpInfo implements IPayload{
         }
     }
     public void setTCPInfo(byte[] in){
-        this.TCPInfo = Arrays.copyOf(in, in.length);
+        this.TCPInfo = MessageConstants.copyOf(in, in.length);
     }
 
     public byte getStatus(){
@@ -42,7 +42,7 @@ public class StatusTcpInfo implements IPayload{
     }
 
     public byte[] getTCPInfo() {
-        return Arrays.copyOf(TCPInfo, TCPInfo.length);
+        return MessageConstants.copyOf(TCPInfo, TCPInfo.length);
     }
     public byte[] toBytestream(){
         byte[] out = new byte[TCPInfo.length + 1 + 4];

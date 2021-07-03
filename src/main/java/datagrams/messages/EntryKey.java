@@ -11,7 +11,7 @@ public class EntryKey implements IPayload{
 
 
     public BigInteger getEntryKey(){
-        return new BigInteger(EntryKey);
+        return new BigInteger(1, EntryKey);
     }
     private EntryKey(){
         EntryKey = new byte[MessageConstants.ENTRYKEY_SIZE_BYTES];
@@ -25,10 +25,10 @@ public class EntryKey implements IPayload{
 
     public void setEntryKey(BigInteger entryKey)throws ArrayIndexOutOfBoundsException {
         try {
-            if (entryKey.bitCount() / 8.0 > MessageConstants.ENTRYKEY_SIZE_BYTES) {
+            if (!MessageConstants.hasLessThan32Bytes(entryKey)) {
                 throw new ArrayIndexOutOfBoundsException();
             } else {
-                this.EntryKey = Arrays.copyOf(entryKey.toByteArray(), this.EntryKey.length);
+                this.EntryKey = MessageConstants.bigIntToByteArray(entryKey, this.EntryKey.length);
             }
         } catch (Exception e) {
             System.err.println("BigInteger zu groß für EntryKey!");
@@ -46,7 +46,7 @@ public class EntryKey implements IPayload{
             if(entryKey.length > MessageConstants.ENTRYKEY_SIZE_BYTES){
                 throw new ArrayIndexOutOfBoundsException();
             }else{
-                this.EntryKey = Arrays.copyOf(entryKey, this.EntryKey.length);
+                this.EntryKey = MessageConstants.copyOf(entryKey, this.EntryKey.length);
             }
         }catch (Exception e){
             System.err.println("Array zu groß für EntryKey!");
@@ -55,7 +55,7 @@ public class EntryKey implements IPayload{
     }
 
     public void setEntryValue(byte[] in){
-        this.EntryValue = Arrays.copyOf(in, in.length);
+        this.EntryValue = MessageConstants.copyOf(in, in.length);
     }
 
     @Override

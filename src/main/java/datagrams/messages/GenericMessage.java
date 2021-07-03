@@ -57,7 +57,7 @@ public class GenericMessage {
             if(randomID.length > this.randomID.length){
                 throw new ArrayIndexOutOfBoundsException();
             }else{
-                this.randomID = Arrays.copyOf(randomID, this.randomID.length);
+                this.randomID = MessageConstants.copyOf(randomID, this.randomID.length);
             }
         }catch(Exception e) {
             System.err.println("RandomID Array zu groß!");
@@ -69,7 +69,7 @@ public class GenericMessage {
             if(!MessageConstants.hasLessThan20Bytes(randomID)){
                 throw new ArrayIndexOutOfBoundsException();
             }
-            this.randomID = Arrays.copyOf(randomID.toByteArray(), this.randomID.length);
+            this.randomID = MessageConstants.bigIntToByteArray(randomID, this.randomID.length);
         }catch(Exception e){
             System.err.println("RandomID BigInteger zu groß!");
             e.printStackTrace();
@@ -88,7 +88,7 @@ public class GenericMessage {
             if (!MessageConstants.hasLessThan32Bytes(senderNodeID)){
                 throw new ArrayIndexOutOfBoundsException();
             }else {
-                this.senderNodeID = Arrays.copyOf(senderNodeID.toByteArray(), this.senderNodeID.length);
+                this.senderNodeID = MessageConstants.bigIntToByteArray(senderNodeID, this.senderNodeID.length);
             }
         }catch(Exception e){
             System.err.println("SenderNodeID BigInteger zu groß!");
@@ -100,15 +100,15 @@ public class GenericMessage {
     }
 
     public BigInteger getRandomID() {
-        return new BigInteger(this.randomID);
+        return new BigInteger(1,this.randomID);
     }
 
     public BigInteger getSenderNodeID() {
-        return new BigInteger(this.senderNodeID);
+        return new BigInteger(1,this.senderNodeID);
     }
 
     public BigInteger getTypeHeader() {
-        return new BigInteger(this.typeHeader);
+        return new BigInteger(1, this.typeHeader);
     }
     public void setPayload(IPayload payload){
         this.payload = payload;

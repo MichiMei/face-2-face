@@ -9,7 +9,7 @@ public class NodeID implements IPayload{
     private byte[] NodeID;
 
     public BigInteger getNodeID(){
-        return new BigInteger(NodeID);
+        return new BigInteger(1, NodeID);
     }
 
     public NodeID(BigInteger nodeID) throws ArrayIndexOutOfBoundsException{
@@ -21,7 +21,7 @@ public class NodeID implements IPayload{
             if(!MessageConstants.hasLessThan32Bytes(nodeID)){
                 throw new ArrayIndexOutOfBoundsException();
             }else{
-                this.NodeID = Arrays.copyOf(nodeID.toByteArray(), MessageConstants.NODEID_SIZE_BYTES);
+                this.NodeID = MessageConstants.bigIntToByteArray(nodeID, MessageConstants.NODEID_SIZE_BYTES);
             }
         }catch (Exception e){
             System.err.println("BigInteger zu groß für NodeID!");
@@ -38,7 +38,7 @@ public class NodeID implements IPayload{
             if(nodeID.length > MessageConstants.NODEID_SIZE_BYTES){
                 throw new ArrayIndexOutOfBoundsException();
             }else{
-                this.NodeID = Arrays.copyOf(nodeID, MessageConstants.NODEID_SIZE_BYTES);
+                this.NodeID = MessageConstants.copyOf(nodeID, MessageConstants.NODEID_SIZE_BYTES);
             }
         }catch (Exception e){
             System.err.println("Array zu groß für NodeID!");
@@ -48,7 +48,7 @@ public class NodeID implements IPayload{
 
 
     public byte[] toBytestream() {
-        return Arrays.copyOf(this.NodeID, this.NodeID.length);
+        return MessageConstants.copyOf(this.NodeID, this.NodeID.length);
     }
 
 

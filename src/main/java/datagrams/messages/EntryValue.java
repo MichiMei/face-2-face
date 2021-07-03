@@ -26,7 +26,7 @@ public class EntryValue implements IPayload {
     }
 
     public void setEntryValue(byte[] in){
-        this.entryValue = Arrays.copyOf(in, in.length);
+        this.entryValue = MessageConstants.copyOf(in, in.length);
     }
 
     public byte[] toBytestream(){
