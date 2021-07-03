@@ -9,8 +9,9 @@ public class EntryKey implements IPayload{
     private byte[] EntryKey;
     private byte[] EntryValue;
 
+
     public BigInteger getEntryKey(){
-        return new BigInteger(EntryKey);
+        return new BigInteger(1, EntryKey);
     }
     private EntryKey(){
         EntryKey = new byte[MessageConstants.ENTRYKEY_SIZE_BYTES];
@@ -24,10 +25,10 @@ public class EntryKey implements IPayload{
 
     public void setEntryKey(BigInteger entryKey)throws ArrayIndexOutOfBoundsException {
         try {
-            if (entryKey.bitCount() / 8.0 > MessageConstants.ENTRYKEY_SIZE_BYTES) {
+            if (!MessageConstants.hasLessThan32Bytes(entryKey)) {
                 throw new ArrayIndexOutOfBoundsException();
             } else {
-                this.EntryKey = Arrays.copyOf(entryKey.toByteArray(), this.EntryKey.length);
+                this.EntryKey = MessageConstants.bigIntToByteArray(entryKey, this.EntryKey.length);
             }
         } catch (Exception e) {
             System.err.println("BigInteger zu groß für EntryKey!");
@@ -45,7 +46,7 @@ public class EntryKey implements IPayload{
             if(entryKey.length > MessageConstants.ENTRYKEY_SIZE_BYTES){
                 throw new ArrayIndexOutOfBoundsException();
             }else{
-                this.EntryKey = Arrays.copyOf(entryKey, this.EntryKey.length);
+                this.EntryKey = MessageConstants.copyOf(entryKey, this.EntryKey.length);
             }
         }catch (Exception e){
             System.err.println("Array zu groß für EntryKey!");
@@ -54,23 +55,26 @@ public class EntryKey implements IPayload{
     }
 
     public void setEntryValue(byte[] in){
-        this.EntryValue = Arrays.copyOf(in, in.length);
+        this.EntryValue = MessageConstants.copyOf(in, in.length);
     }
 
     @Override
     public byte[] toBytestream() {
-        byte[] out = new byte[this.EntryKey.length + this.EntryValue.length];
-        System.arraycopy(this.EntryKey, 0, out, 0, this.EntryKey.length);
-        System.arraycopy(this.EntryValue, 0, out, this.EntryKey.length, this.EntryValue.length);
+        byte[] out = new byte[this.EntryKey.length + this.EntryValue.length + 4];
+        byte[] entryValueLength = MessageConstants.intToByteArray(this.EntryValue.length);
+        System.arraycopy(entryValueLength, 0, out, 0, 4);
+        System.arraycopy(this.EntryKey, 0, out, 4, this.EntryKey.length);
+        System.arraycopy(this.EntryValue, 0, out, 4+this.EntryKey.length, this.EntryValue.length);
         return out;
     }
     public static IPayload fromBytestream(byte[] in){
-        int EntryValueLength = in.length - MessageConstants.ENTRYKEY_SIZE_BYTES;
+        //int EntryValueLength = in.length - MessageConstants.ENTRYKEY_SIZE_BYTES;
+        int EntryValueLength = MessageConstants.byteArrayToInt(Arrays.copyOfRange(in, 0, 4));
         byte[] EntryKey = new byte[MessageConstants.ENTRYKEY_SIZE_BYTES];
         byte[] EntryValue = new byte[EntryValueLength];
 
-        System.arraycopy(in, 0, EntryKey, 0, MessageConstants.ENTRYKEY_SIZE_BYTES);
-        System.arraycopy(in, MessageConstants.ENTRYKEY_SIZE_BYTES, EntryValue, 0, EntryValueLength);
+        System.arraycopy(in, 4, EntryKey, 0, MessageConstants.ENTRYKEY_SIZE_BYTES);
+        System.arraycopy(in, 4 + MessageConstants.ENTRYKEY_SIZE_BYTES, EntryValue, 0, EntryValueLength);
 
         EntryKey entryKey = new EntryKey();
         entryKey.setEntryKey(EntryKey);

@@ -5,6 +5,10 @@ import datagrams.messages.*;
 public class PayloadConverter {
     public static IPayload convertFromBytestream(byte[] bytesIn, byte type){
         switch(type){
+            case MessageConstants.TYPE_PING:
+                return null;
+            case MessageConstants.TYPE_PONG:
+                return null;
             case MessageConstants.TYPE_STORE_ENTRYKEY:
                 return EntryKey.fromBytestream(bytesIn);
             case MessageConstants.TYPE_STORE_STATUS:
