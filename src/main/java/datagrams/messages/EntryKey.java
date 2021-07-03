@@ -13,6 +13,10 @@ public class EntryKey implements IPayload{
     public BigInteger getEntryKey(){
         return new BigInteger(1, EntryKey);
     }
+    public byte[] getEntryValue() {
+        return EntryValue;
+    }
+
     private EntryKey(){
         EntryKey = new byte[MessageConstants.ENTRYKEY_SIZE_BYTES];
         EntryValue = null;
