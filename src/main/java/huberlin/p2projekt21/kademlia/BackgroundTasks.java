@@ -18,7 +18,6 @@ public class BackgroundTasks{
     public static final long UNANSWERED_TIMEOUT = 10 * 1000;            // 10 seconds
 
     // TODO implement regular-ping
-    // TODO implement hourly-kBucket-lookup
 
     private final BGT_UnansweredRequests unansweredRequests;
     private final BGT_KBucketLookup kBucketLookup;
@@ -36,6 +35,7 @@ public class BackgroundTasks{
      */
     public void stop() {
         unansweredRequests.stop();
+        kBucketLookup.stop();
     }
 
     public interface NodeLookupMethod {
@@ -44,7 +44,7 @@ public class BackgroundTasks{
 
     public static class BGT_KBucketLookup implements Runnable {
         private final KBuckets kBuckets;
-        private NodeLookupMethod nodeLookupMethod;
+        private final NodeLookupMethod nodeLookupMethod;
         private final BigInteger ownID;
 
         private final Logger logger;

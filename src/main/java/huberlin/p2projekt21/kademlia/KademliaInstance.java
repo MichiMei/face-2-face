@@ -14,11 +14,11 @@ import java.util.stream.Collectors;
 
 public class KademliaInstance implements Runnable{
 
-    //public static final int NODE_ID_LENGTH = 255;   // TODO set 256; quickfix for too short kademliaID
-    public static final int NODE_ID_LENGTH = 63;   // TODO testing
+    public static final int NODE_ID_LENGTH = 255;   // TODO set 256; quickfix for too short kademliaID
+    //public static final int NODE_ID_LENGTH = 63;   // for testing
     public static final int RANDOM_ID_LENGTH = 159; // TODO set 160; quickfix for wrong randomID
-    //public static final int K = 20;
-    public static final int K = 10; // TODO testing
+    public static final int K = 20;
+    //public static final int K = 10; // for testing
     public static final int ALPHA = 3;
     // determines how often bootstrapping is retried [1..]
     public static final int BOOTSTRAPPING_TRIES = 5;
@@ -265,6 +265,7 @@ public class KademliaInstance implements Runnable{
     public void stop() {
         logger.info("stopping kademlia");
         this.running.set(false);
+        backgroundTasks.stop();
     }
 
     /**
@@ -279,11 +280,15 @@ public class KademliaInstance implements Runnable{
      * @throws Exception thrown by GenericMessage
      */
     public byte[] getValue(BigInteger key) throws Exception {
+        logger.info("getValue(" + key.toString(16) + ")");
         // search locally
         byte[] value = localHashTable.load(key);
         if (value == null) {
             // not found locally -> search in network
+            logger.info("search in network");
             value = valueLookup(key);
+        } else {
+            logger.info("found locally");
         }
         return value;
     }
@@ -748,7 +753,7 @@ public class KademliaInstance implements Runnable{
         byte[] value = localHashTable.load(payloadReq.getNodeID());
         GenericMessage reply = new GenericMessage(null, -1, request.getSenderIP(), request.getSenderPort());
         reply.setRandomID(request.getRandomID());
-        reply.setSenderNodeID(request.getSenderNodeID());
+        reply.setSenderNodeID(ownID);
         if (value == null) {    // value not available  -> FindNodeR
             logger.info("value not available -> answer findNodeR");
             reply.setTypeHeader(MessageConstants.TYPE_FINDNODE_R);

@@ -36,45 +36,24 @@ public class Controller {
     /**
      * start program
      *
-     * @param args args[0]==ownPort, empty for arbitrary port; args[1]==id for testing purposes
+     * @param args args[0]==ownPort, empty for arbitrary port
      * @throws IOException .
      */
     public static void main(String[] args) throws Exception {
         int ownPort = -1;
-        int id = -1;
         if (args.length >= 1) {
             ownPort = Integer.parseInt(args[0]);
             if (ownPort < 0 || ownPort > 65535) {
                 ownPort = -1;
             }
         }
-        if (args.length >= 2) {
-            id = Integer.parseInt(args[1]);
-        }
 
         Controller controller = new Controller(ownPort);
         //controller.readBootstrappingAddress();  // uncomment if initial node
         controller.ip = InetAddress.getByName("192.168.178.21");
-        controller.port = 58611;
+        controller.port = 51192;
 
-        //controller.simpleController(id);
         controller.manualController();
-    }
-
-    public void simpleController(int id) throws Exception {
-        // initialize kademlia
-        init();
-        // wait a minute until most nodes are started and network is mostly stable
-        try {
-            Thread.sleep(60*1000);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-        // store 3 elements
-        if (id >= 0) {
-            BigInteger e1 = BigInteger.valueOf(id);
-            kademlia.store(e1, e1.toString().getBytes());
-        }
     }
 
     public void manualController() throws Exception {// initialize kademlia
@@ -83,7 +62,8 @@ public class Controller {
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
 
-        while (true) {
+        boolean running = true;
+        while (running) {
             // read command
             String input = reader.readLine();
 
@@ -94,43 +74,47 @@ public class Controller {
             String cmd = words[0].trim();
 
             // execute command
-            if (cmd.equals("store")) {
-                if (words.length != 3) {
-                    System.out.println("Usage: store <key> <value>");
-                    System.out.println("Key needs to be an positive integer");
-                    System.out.println("Value needs to be a string without whitespaces");
-                    continue;
+            switch (cmd) {
+                case "store" -> {
+                    if (words.length != 3) {
+                        System.out.println("Usage: store <key> <value>");
+                        System.out.println("Key needs to be an positive integer");
+                        System.out.println("Value needs to be a string without whitespaces");
+                        continue;
+                    }
+                    BigInteger key = BigInteger.valueOf(Long.parseLong(words[1]));
+                    byte[] value = words[2].getBytes();
+                    System.out.println("#Store");
+                    if (kademlia.store(key, value)) {
+                        System.out.println("#\tStored in the network");
+                    } else {
+                        System.out.println("#\tStored locally");
+                    }
                 }
-                BigInteger key = BigInteger.valueOf(Long.parseLong(words[1]));
-                byte[] value = words[2].getBytes();
-                System.out.println("#Store");
-                if (kademlia.store(key, value)) {
-                    System.out.println("#\tStored in the network");
-                } else {
-                    System.out.println("#\tStored locally");
+                case "load" -> {
+                    if (words.length != 2) {
+                        System.out.println("Usage: load <key>");
+                        System.out.println("Key needs to be an positive integer");
+                        continue;
+                    }
+                    BigInteger key = BigInteger.valueOf(Long.parseLong(words[1]));
+                    System.out.println("#Load");
+                    byte[] value = kademlia.getValue(key);
+                    if (value == null) {
+                        System.out.println("#\tnot found");
+                    } else {
+                        String stringValue = new String(value);
+                        System.out.println("#\t" + stringValue);
+                    }
                 }
-            } else if (cmd.equals("load")) {
-                if (words.length != 2) {
-                    System.out.println("Usage: load <key>");
-                    System.out.println("Key needs to be an positive integer");
-                    continue;
+                case "stop" -> {
+                    System.out.println("#Stop");
+                    running = false;
                 }
-                BigInteger key = BigInteger.valueOf(Long.parseLong(words[1]));
-                System.out.println("#Load");
-                byte[] value = kademlia.getValue(key);
-                if (value == null) {
-                    System.out.println("#\tnot found");
-                } else {
-                    String stringValue = new String(value);
-                    System.out.println("#\t" + stringValue);
+                default -> {
+                    System.out.println("Command unknown");
+                    System.out.println("Supported: store, load, stop");
                 }
-            } else if (cmd.equals("stop")) {
-                System.out.println("#Stop");
-                break;
-            } else {
-                System.out.println("Command unknown");
-                System.out.println("Supported: store, load, stop");
-                continue;
             }
         }
 
