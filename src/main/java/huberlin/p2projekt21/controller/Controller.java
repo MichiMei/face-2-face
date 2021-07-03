@@ -7,6 +7,7 @@ import huberlin.p2projekt21.networking.Sender;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.math.BigInteger;
 import java.net.*;
 import java.nio.channels.DatagramChannel;
 import java.nio.file.Files;
@@ -35,24 +36,110 @@ public class Controller {
     /**
      * start program
      *
-     * @param args args[0] == own port, empty for arbitrary port
+     * @param args args[0]==ownPort, empty for arbitrary port; args[1]==id for testing purposes
      * @throws IOException .
      */
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws Exception {
         int ownPort = -1;
+        int id = -1;
         if (args.length >= 1) {
             ownPort = Integer.parseInt(args[0]);
             if (ownPort < 0 || ownPort > 65535) {
                 ownPort = -1;
             }
         }
+        if (args.length >= 2) {
+            id = Integer.parseInt(args[1]);
+        }
 
-        new Controller(ownPort).init();
+        Controller controller = new Controller(ownPort);
+        //controller.readBootstrappingAddress();  // uncomment if initial node
+        controller.ip = InetAddress.getByName("192.168.178.21");
+        controller.port = 58611;
+
+        //controller.simpleController(id);
+        controller.manualController();
+    }
+
+    public void simpleController(int id) throws Exception {
+        // initialize kademlia
+        init();
+        // wait a minute until most nodes are started and network is mostly stable
+        try {
+            Thread.sleep(60*1000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        // store 3 elements
+        if (id >= 0) {
+            BigInteger e1 = BigInteger.valueOf(id);
+            kademlia.store(e1, e1.toString().getBytes());
+        }
+    }
+
+    public void manualController() throws Exception {// initialize kademlia
+        // initialize
+        init();
+
+        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+
+        while (true) {
+            // read command
+            String input = reader.readLine();
+
+            // parse command
+            String[] words = input.split(" ");
+            if (words.length == 0) continue;
+            //if (words.length == 1 || words[0].trim().length() == 0) continue;
+            String cmd = words[0].trim();
+
+            // execute command
+            if (cmd.equals("store")) {
+                if (words.length != 3) {
+                    System.out.println("Usage: store <key> <value>");
+                    System.out.println("Key needs to be an positive integer");
+                    System.out.println("Value needs to be a string without whitespaces");
+                    continue;
+                }
+                BigInteger key = BigInteger.valueOf(Long.parseLong(words[1]));
+                byte[] value = words[2].getBytes();
+                System.out.println("#Store");
+                if (kademlia.store(key, value)) {
+                    System.out.println("#\tStored in the network");
+                } else {
+                    System.out.println("#\tStored locally");
+                }
+            } else if (cmd.equals("load")) {
+                if (words.length != 2) {
+                    System.out.println("Usage: load <key>");
+                    System.out.println("Key needs to be an positive integer");
+                    continue;
+                }
+                BigInteger key = BigInteger.valueOf(Long.parseLong(words[1]));
+                System.out.println("#Load");
+                byte[] value = kademlia.getValue(key);
+                if (value == null) {
+                    System.out.println("#\tnot found");
+                } else {
+                    String stringValue = new String(value);
+                    System.out.println("#\t" + stringValue);
+                }
+            } else if (cmd.equals("stop")) {
+                System.out.println("#Stop");
+                break;
+            } else {
+                System.out.println("Command unknown");
+                System.out.println("Supported: store, load, stop");
+                continue;
+            }
+        }
+
+        terminate();
     }
 
     public Controller(int ownPort) {
         if (ownPort >= 0 && ownPort <= 65535) {
-            own = new InetSocketAddress(port);
+            own = new InetSocketAddress(ownPort);
         } else {
             own = null;
         }
@@ -62,7 +149,6 @@ public class Controller {
         addHandler();
         this.socket = DatagramChannel.open().bind(own);
         printOwnIP(socket);
-        readBootstrappingAddress();
 
         ConcurrentLinkedDeque<DatagramPacket> senderChannel = new ConcurrentLinkedDeque<>();
         ConcurrentLinkedDeque<DatagramPacket> receiverChannel = new ConcurrentLinkedDeque<>();
@@ -91,7 +177,7 @@ public class Controller {
             InetAddress ip = tmp.getLocalAddress();
             String socketAddress = socket.getLocalAddress().toString();
             String port = socketAddress.substring(socketAddress.lastIndexOf(':')+1);
-            System.out.println("own address " + ip.toString() + ":" + port);
+            System.out.println(ip.toString() + ":" + port);
             Logger.getGlobal().info("own address " + ip.toString() + ":" + port);
         } catch (IOException e) {
             e.printStackTrace();
@@ -110,10 +196,10 @@ public class Controller {
 
         int separator = input.lastIndexOf(':');
         port = Integer.parseInt(input.substring(separator+1));
-        System.out.println("port: " + port);
+        //System.out.println("port: " + port);
 
         String address = input.substring(0, separator);
-        System.out.println("address: " + address);
+        //System.out.println("address: " + address);
 
         if (address.charAt(0) == '/') address = address.substring(1);
         ip = InetAddress.getByName(address);

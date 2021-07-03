@@ -7,9 +7,11 @@ public class MessageConstants {
 
     public static final int HEADER_SIZE_BYTES = 53;
     public static final int TYPE_SIZE_BYTES = 1;
-    public static final int NODEID_SIZE_BYTES = 32;
+    //public static final int NODEID_SIZE_BYTES = 32;
+    public static final int NODEID_SIZE_BYTES = 8;     // TODO testing
     public static final int RANDOMID_SIZE_BYTES = 20;
-    public static final int ENTRYKEY_SIZE_BYTES = 32;
+    //public static final int ENTRYKEY_SIZE_BYTES = 32;
+    public static final int ENTRYKEY_SIZE_BYTES = 8;   // TODO testing
     public static final int STATUS_SIZE_BYTES = 1;
 
     public static final byte TYPE_HEADER = 0;

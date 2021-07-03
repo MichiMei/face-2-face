@@ -1,10 +1,7 @@
 package huberlin.p2projekt21.kademlia;
 
 import datagrams.helpers.MessageConstants;
-import datagrams.messages.EntryValue;
-import datagrams.messages.GenericMessage;
-import datagrams.messages.NodeID;
-import datagrams.messages.Tuples;
+import datagrams.messages.*;
 
 import java.math.BigInteger;
 import java.net.DatagramPacket;
@@ -17,9 +14,11 @@ import java.util.stream.Collectors;
 
 public class KademliaInstance implements Runnable{
 
-    public static final int NODE_ID_LENGTH = 256;
+    //public static final int NODE_ID_LENGTH = 255;   // TODO set 256; quickfix for too short kademliaID
+    public static final int NODE_ID_LENGTH = 63;   // TODO testing
     public static final int RANDOM_ID_LENGTH = 159; // TODO set 160; quickfix for wrong randomID
-    public static final int K = 20;
+    //public static final int K = 20;
+    public static final int K = 10; // TODO testing
     public static final int ALPHA = 3;
     // determines how often bootstrapping is retried [1..]
     public static final int BOOTSTRAPPING_TRIES = 5;
@@ -38,6 +37,7 @@ public class KademliaInstance implements Runnable{
     private final Thread mainThread;
     private final Logger logger;
     private BackgroundTasks backgroundTasks;
+    private final LocalHashTable localHashTable;
 
     private final KBuckets kBuckets;
     // maps randomIDs to (receiverID, sendTime, receiverChannel)
@@ -61,6 +61,7 @@ public class KademliaInstance implements Runnable{
         mainThread = new Thread(this);
         logger = Logger.getGlobal();
         logger.info("ownID: " + ownID.toString(16));
+        localHashTable = new LocalHashTable();
 
         kBuckets = new KBuckets(K, NODE_ID_LENGTH, ownID);
         requestMap = new ConcurrentHashMap<>();
@@ -160,8 +161,13 @@ public class KademliaInstance implements Runnable{
             }
             case MessageConstants.TYPE_STORE_ENTRYKEY -> {
                 logger.info("store received");
-                // TODO parse payload
-                // TODO store message
+                // parse payload
+                EntryKey payload = (EntryKey) msg.getPayload();
+                if (payload == null) return false;
+                BigInteger key = payload.getEntryKey();
+                byte[] value = payload.getEntryValue();
+                // store <key, value>
+                localHashTable.store(key, value);
             }
             // TODO Store reply missing? probably not even necessary
             case MessageConstants.TYPE_FINDNODE -> {
@@ -264,23 +270,60 @@ public class KademliaInstance implements Runnable{
     /**
      * Get the associated value for the given key
      * null is returned if no value could be found
+     *
+     * !!!WARNING: Will block for possibly a really long time!!!
+     * !!!only call from asynchronous context!!!
+     *
      * @param key search key
      * @return data associated with the key (or null)
+     * @throws Exception thrown by GenericMessage
      */
-    public byte[] getValue(BigInteger key) {
-        // TODO implement method
-        return null;
+    public byte[] getValue(BigInteger key) throws Exception {
+        // search locally
+        byte[] value = localHashTable.load(key);
+        if (value == null) {
+            // not found locally -> search in network
+            value = valueLookup(key);
+        }
+        return value;
     }
 
     /**
      * Store the given key-value pair
+     *
+     * !!!WARNING: Will block for possibly a really long time!!!
+     * !!!only call from asynchronous context!!!
+     *
      * @param key key for the given value
-     * @param data byte representation of the data to be stored
-     * @return TODO probably return void?
+     * @param value byte representation of the value to be stored
+     * @return true if stored in network, false if only stored locally
+     * @throws Exception thrown by GenericMessage
      */
-    public boolean store(BigInteger key, byte[] data) {
-        // TODO implement method
-        return false;
+    public boolean store(BigInteger key, byte[] value) throws Exception {
+        logger.info("store(" + key.toString(16) + ")");
+        // store locally
+        localHashTable.store(key, value);
+        // store in network
+        List<KademliaNode> nodes = nodeLookup(key);
+        if (nodes == null || nodes.size() == 0) {
+            logger.warning("Could not store message in the network");
+            return false;
+        }
+        for (var node : nodes) {
+            GenericMessage store = new GenericMessage(null, -1, node.getAddress(), node.getPort());
+            store.setTypeHeader(MessageConstants.TYPE_STORE_ENTRYKEY);
+            BigInteger randomID = getRandomID();
+            store.setRandomID(randomID);
+            store.setSenderNodeID(ownID);
+            EntryKey payload = new EntryKey(key);
+            payload.setEntryValue(value);
+            store.setPayload(payload);
+            // TODO uncomment if storeR is added
+            // requestMap.put(randomID, new RequestCookie(node.getId(), System.currentTimeMillis(), -1));
+            outgoingChannel.add(store.toDatagram());
+            logger.info("send store to " + node.getId().toString(16));
+        }
+        return true;
     }
 
     public BigInteger getOwnID() {
@@ -394,8 +437,6 @@ public class KademliaInstance implements Runnable{
         return false;
     }
 
-    // TODO handle valueLookup
-    // TODO handle findValueR-messages
     /**
      * Find the k closest to id nodes in the network
      * cf. 2.2 Kademlia protocol
@@ -408,14 +449,14 @@ public class KademliaInstance implements Runnable{
     private List<KademliaNode> nodeLookup(BigInteger id) throws Exception {
         logger.info("nodeLookup(" + id.toString(16) + ")");
         kBuckets.nodeLookupPerformed(id);
-        // create lookup id
+        // create lookup id (to be able to forward incoming replies to the correct node-/valueLookup
         long lookupId;
         BlockingQueue<GenericMessage> channel = new LinkedBlockingDeque<>();
         do {
             lookupId = random.nextLong();
         } while (lookupChannels.putIfAbsent(lookupId, channel) != null);
 
-        // List of closest nodes (and status)
+        // initialize list of closest nodes (and status)
         // status{ 0->new; >0-> asked (number corresponds to ask-time); -1->answered }
         Map<KademliaNode, Long> closest = new TreeMap<>(DistanceComparator.getCompareKademliaDistances(id));
         var tmp = kBuckets.lookup(id, K);
@@ -424,8 +465,6 @@ public class KademliaInstance implements Runnable{
             return new ArrayList<>();
         }
         for (var elem : tmp) closest.put(elem, (long) 0);
-
-        //int kFactor = 1;
 
         // recursive until closest k nodes responded:
         while (true) {
@@ -451,13 +490,6 @@ public class KademliaInstance implements Runnable{
                     logger.info("send findNode to " + next.getKey().getId().toString(16));
                 }
             }
-            // EdgeCase: all nodes asked -> add more nodes
-            /*if (send == 0) {
-                kFactor++;
-                // get more close nodes
-                tmp = kBuckets.lookup(id, K*kFactor);
-                for (var elem : tmp) closest.putIfAbsent(elem, (long) 0);
-            }*/
 
             // wait for incoming replies (TIMEOUT -> continue, edge case all queried)
             GenericMessage next = channel.poll(POLL_TIMEOUT, TimeUnit.MILLISECONDS);
@@ -480,8 +512,6 @@ public class KademliaInstance implements Runnable{
                     tuples = payload.getTuplesAsArray();
                     logger.warning("received " + tuples.length + " nodes");
                 }
-                // I'm proud of this... OK?!? (transforms a array of tuples to a map, mapping KademliaNodes to status 0)
-                //var list = Arrays.stream(tuples.clone()).map(tuple -> new KademliaNode(tuple.getNodeID().getNodeID(), tuple.getIpAddress(), tuple.getPort())).collect(Collectors.toMap(n -> n, n -> (long)0));
 
                 // transforms array of Tuples to list of KademliaNodes
                 var nodeList = Arrays.stream(tuples.clone()).map(t -> new KademliaNode(t.getNodeID().getNodeID(), t.getIpAddress(), t.getPort())).collect(Collectors.toList());
@@ -536,6 +566,150 @@ public class KademliaInstance implements Runnable{
     }
 
     /**
+     * Find value for the specified key
+     * cf. 2.2 Kademlia protocol
+     * !!!WARNING: Will block for possibly a really long time!!!
+     * !!!only call from asynchronous context!!!
+     *
+     * @param key (hash)key of the desired value
+     * @return value for that key (or null if not found)
+     */
+    private byte[] valueLookup(BigInteger key) throws Exception {
+        logger.info("valueLookup(" + key.toString(16) + ")");
+        kBuckets.nodeLookupPerformed(key);
+        // create lookup id (to be able to forward incoming replies to the correct node-/valueLookup
+        long lookupId;
+        BlockingQueue<GenericMessage> channel = new LinkedBlockingDeque<>();
+        do {
+            lookupId = random.nextLong();
+        } while (lookupChannels.putIfAbsent(lookupId, channel) != null);
+
+        // initialize list of closest nodes (and status)
+        // status{ 0->new; >0-> asked (number corresponds to ask-time); -1->answered }
+        Map<KademliaNode, Long> closest = new TreeMap<>(DistanceComparator.getCompareKademliaDistances(key));
+        var tmp = kBuckets.lookup(key, K);
+        if (tmp.size() == 0) {
+            logger.warning("lookup ended as kBuckets are empty");
+            return null;
+        }
+        for (var elem : tmp) closest.put(elem, (long) 0);
+
+        byte[] value = null;
+
+        // recursive until closest k nodes responded:
+        while (true) {
+            // send FindNode/FindValue to alpha closest (not yet queried) nodes from list
+            var iterator = closest.entrySet().iterator();
+            int send = 0;
+            while (send < ALPHA && iterator.hasNext()) {
+                Map.Entry<KademliaNode, Long> next = iterator.next();
+                if (next.getValue() == 0) {
+                    GenericMessage findValue = new GenericMessage(null, -1, next.getKey().getAddress(), next.getKey().getPort());
+                    findValue.setTypeHeader(MessageConstants.TYPE_FINDVALUE);
+                    BigInteger randomID = getRandomID();
+                    findValue.setRandomID(randomID);
+                    findValue.setSenderNodeID(ownID);
+                    NodeID nodeID = new NodeID(key);
+                    findValue.setPayload(nodeID);
+                    // register message for own lookupChannel
+                    requestMap.put(randomID, new RequestCookie(next.getKey().getId(), System.currentTimeMillis(), lookupId));
+                    outgoingChannel.add(findValue.toDatagram());
+                    //System.out.println(Arrays.toString(findNode.toDatagram().getData()));
+                    closest.put(next.getKey(), System.currentTimeMillis());   // change status to asked
+                    send++;
+                    logger.info("send findValue to " + next.getKey().getId().toString(16));
+                }
+            }
+
+            // wait for incoming replies (TIMEOUT -> continue, edge case all queried)
+            GenericMessage next = channel.poll(POLL_TIMEOUT, TimeUnit.MILLISECONDS);
+            if (next == null) {
+                // timeout exceeded -> send further messages
+                logger.warning("no reply received (timeout)");
+            } else {
+                // mark as answered
+                closest.put(new KademliaNode(next.getSenderNodeID(), next.getSenderIP(), next.getSenderPort()), (long) -1);
+                logger.info("received response " + next.getSenderNodeID().toString(16));
+
+                // get message type
+                switch (next.getTypeHeader().byteValueExact()) {
+                    case MessageConstants.TYPE_FINDNODE_R -> {
+                        // get received nodes
+                        Tuples payload = (Tuples) next.getPayload();
+                        Tuples.Tuple[] tuples;
+                        if (payload == null) {
+                            tuples = new Tuples.Tuple[0];
+                            logger.warning("received 0 nodes");
+                        } else {
+                            tuples = payload.getTuplesAsArray();
+                            logger.warning("received " + tuples.length + " nodes");
+                        }
+
+                        // transforms array of Tuples to list of KademliaNodes
+                        var nodeList = Arrays.stream(tuples.clone()).map(t -> new KademliaNode(t.getNodeID().getNodeID(), t.getIpAddress(), t.getPort())).collect(Collectors.toList());
+
+                        for (KademliaNode node : nodeList) {
+                            if (node.getId().equals(ownID)) continue;   // skip own id
+                            // add to kBucket
+                            kBuckets.update(node, 0);
+                            // add to closest (if not present)
+                            closest.putIfAbsent(node, (long) 0);
+                            logger.info("added to closest: " + node.getId().toString(16));
+                        }
+                    }
+                    case MessageConstants.TYPE_FINDVALUE_R -> {
+                        EntryValue entryValue = (EntryValue) next.getPayload();
+                        byte[] tmpValue = entryValue.getEntryValue();
+                        // TODO compare date -> only override if newer
+                        if (value == null /* || tmpValue newer than value*/) {
+                            value = tmpValue;
+                            // TODO remove return (newer values could exist)
+                            return value;
+                        }
+                    }
+                }
+            }
+
+            // remove 'silent' nodes from list
+            long time = System.currentTimeMillis();
+            int count = 0;
+            var removeIterator = closest.entrySet().iterator();
+            while (removeIterator.hasNext()) {
+                var entry = removeIterator.next();
+                long entryVal = entry.getValue();
+                if (entryVal > 0 && time > entryVal+REQUEST_TIMEOUT) {  // Request unanswered -> remove
+                    removeIterator.remove();
+                    count++;
+                }
+            }
+            logger.info("removed " + count + " silent nodes");
+
+            // TODO remove elements if list is very long (e.g. 10*K)?
+
+            // check recursion end
+            iterator = closest.entrySet().iterator();
+            boolean allAnswered = true;
+            for (int i = 0; i < K && iterator.hasNext(); i++) {
+                if (iterator.next().getValue() != -1) {
+                    // one of the closest K nodes has not answered yet
+                    allAnswered = false;
+                    break;
+                }
+            }
+            if (allAnswered) {
+                // closest K nodes answered -> finish
+                logger.info("K closest nodes answered -> nodeLookup finished");
+                break;
+            }
+        }
+
+        kBuckets.nodeLookupPerformed(key);
+        lookupChannels.remove(lookupId);
+        // return found value (or null if non found)
+        return value;
+    }
+
+    /**
      * Generate new RandomID
      * @return new RandomID
      */
@@ -571,7 +745,7 @@ public class KademliaInstance implements Runnable{
         NodeID payloadReq = (NodeID) request.getPayload();
         if (payloadReq == null) return null;
 
-        byte[] value = getValueStub(payloadReq.getNodeID());
+        byte[] value = localHashTable.load(payloadReq.getNodeID());
         GenericMessage reply = new GenericMessage(null, -1, request.getSenderIP(), request.getSenderPort());
         reply.setRandomID(request.getRandomID());
         reply.setSenderNodeID(request.getSenderNodeID());
@@ -589,18 +763,6 @@ public class KademliaInstance implements Runnable{
             reply.setPayload(payloadRes);
         }
         return reply;
-    }
-
-    /**
-     * TODO replace with proper method
-     * look for value in storage
-     *
-     * @param key key of the requested value
-     * @return value if available, null otherwise
-     */
-    private byte[] getValueStub(BigInteger key) {
-        // TODO implement method
-        return null;
     }
 
     public static class RequestCookie {
