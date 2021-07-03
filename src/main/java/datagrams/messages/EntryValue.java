@@ -30,25 +30,29 @@ public class EntryValue implements IPayload {
     }
 
     public byte[] toBytestream(){
-        byte[] out = new byte[entryValue.length + 1];
+        byte[] out = new byte[entryValue.length + 1 + 4];
+        byte[] entryValueLen = MessageConstants.intToByteArray(entryValue.length);
+        System.arraycopy(entryValueLen, 0, out, 0, 4);
         if(isValueNotInfo){
-            out[0] = 0x7F;
+            out[4] = 0x7F;
         }else{
-            out[0] = 0x00;
+            out[4] = 0x00;
         }
-        System.arraycopy(this.entryValue, 0, out, 1, this.entryValue.length);
+        System.arraycopy(this.entryValue, 0, out, 5, this.entryValue.length);
         return out;
     }
 
     public static IPayload fromBytestream(byte[] in){
         boolean isValueNotInfo;
-        byte[] entryValue = new byte[in.length - 1];
-        if(in[0] == 0x7F){
+
+        int entryValueLen = MessageConstants.byteArrayToInt(Arrays.copyOfRange(in, 0 ,4));
+        byte[] entryValue = new byte[entryValueLen];
+        if(in[4] == 0x7F){
             isValueNotInfo = true;
         }else{
             isValueNotInfo = false;
         }
-        System.arraycopy(in, 1, entryValue, 0, in.length-1);
+        System.arraycopy(in, 5, entryValue, 0, entryValueLen);
 
         return new EntryValue(isValueNotInfo, entryValue);
     }

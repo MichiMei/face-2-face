@@ -45,16 +45,21 @@ public class StatusTcpInfo implements IPayload{
         return Arrays.copyOf(TCPInfo, TCPInfo.length);
     }
     public byte[] toBytestream(){
-        byte[] out = new byte[TCPInfo.length + 1];
-        out[0] = status;
-        System.arraycopy(TCPInfo, 0, out, 1, TCPInfo.length);
+        byte[] out = new byte[TCPInfo.length + 1 + 4];
+        byte[] infoLen = MessageConstants.intToByteArray(TCPInfo.length);
+        System.arraycopy(infoLen, 0, out, 0, 4);
+        out[4] = status;
+        System.arraycopy(TCPInfo, 0, out, 5, TCPInfo.length);
         return out;
     }
 
     public static IPayload fromBytestream(byte[] in){
-        byte status = in[0];
-        byte[] tcpInfo = new byte[in.length - 1];
-        System.arraycopy(in, 1, tcpInfo, 0, in.length - 1);
+        byte status = in[4];
+        int infoLen = MessageConstants.byteArrayToInt(Arrays.copyOfRange(in, 0, 4));
+        byte[] tcpInfo = new byte[infoLen];
+
+
+        System.arraycopy(in, 5, tcpInfo, 0, infoLen);
         StatusTcpInfo out = new StatusTcpInfo(status, tcpInfo);
         return out;
     }

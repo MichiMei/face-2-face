@@ -1,6 +1,7 @@
 package datagrams.helpers;
 
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
 
 public class MessageConstants {
     private MessageConstants(){}
@@ -44,5 +45,19 @@ public class MessageConstants {
         }else{
             return bigInt.bitLength() <= 32*8;
         }
+    }
+    public static boolean hasLessThan20Bytes(BigInteger bigInt){
+        if(bigInt.signum() == -1){
+            return bigInt.bitLength() <= 19*8;
+        }else{
+            return bigInt.bitLength() <= 20*8;
+        }
+    }
+
+    public static byte[] intToByteArray(int toArray){
+        return ByteBuffer.allocate(4).putInt(toArray).array();
+    }
+    public static int byteArrayToInt(byte[] in){
+        return in[0] << 24 | (in[1] & 0xFF) << 16 | (in[2] & 0xFF) << 8 | (in[3] & 0xFF);
     }
 }

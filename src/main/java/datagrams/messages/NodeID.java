@@ -53,6 +53,11 @@ public class NodeID implements IPayload{
 
 
     public static IPayload fromBytestream(byte[] in) {
+        byte[] out = new byte[MessageConstants.NODEID_SIZE_BYTES];
+
+        System.arraycopy(in, 0, out, 0, MessageConstants.NODEID_SIZE_BYTES);
+        return new NodeID(out);
+        /*
         try{
             if(in.length > MessageConstants.NODEID_SIZE_BYTES){
                 throw new ArrayIndexOutOfBoundsException();
@@ -64,6 +69,7 @@ public class NodeID implements IPayload{
             e.printStackTrace();
         }
         return null;
+         */
     }
     public void print(){
         System.out.println("PAYLOAD NodeID");

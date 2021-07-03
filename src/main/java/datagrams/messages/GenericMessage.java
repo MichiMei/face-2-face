@@ -51,6 +51,7 @@ public class GenericMessage {
     public void setTypeHeader(byte[] typeHeader) {
         this.typeHeader = typeHeader;
     }
+
     public void setRandomID(byte[] randomID) throws ArrayIndexOutOfBoundsException {
         try{
             if(randomID.length > this.randomID.length){
@@ -65,7 +66,7 @@ public class GenericMessage {
     }
     public void setRandomID(BigInteger randomID) throws ArrayIndexOutOfBoundsException{
         try{
-            if(randomID.bitCount() / 8.0 > this.randomID.length){
+            if(!MessageConstants.hasLessThan20Bytes(randomID)){
                 throw new ArrayIndexOutOfBoundsException();
             }
             this.randomID = Arrays.copyOf(randomID.toByteArray(), this.randomID.length);
