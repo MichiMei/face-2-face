@@ -14,9 +14,9 @@ import java.util.stream.Collectors;
 
 public class KademliaInstance implements Runnable{
 
-    public static final int NODE_ID_LENGTH = 255;   // TODO set 256; quickfix for too short kademliaID
-    //public static final int NODE_ID_LENGTH = 63;   // for testing
-    public static final int RANDOM_ID_LENGTH = 159; // TODO set 160; quickfix for wrong randomID
+    public static final int NODE_ID_LENGTH = 256;
+    //public static final int NODE_ID_LENGTH = 64;   // for testing
+    public static final int RANDOM_ID_LENGTH = 160;
     public static final int K = 20;
     //public static final int K = 10; // for testing
     public static final int ALPHA = 3;
@@ -86,16 +86,6 @@ public class KademliaInstance implements Runnable{
 
             // decode incoming message
             try {
-                //System.out.println(Arrays.toString(datagram.getData()));
-
-                // TODO remove; quickfix for datagram to long for parser
-                var data = datagram.getData();
-                int end = data.length;
-                while (end > 0 && data[end-1] == 0) end--;
-                var newData = Arrays.copyOf(data, end);
-                datagram.setData(newData);
-                // TODO remove end
-
                 GenericMessage msg = new GenericMessage();
                 msg.fromDatagramPacket(datagram);
                 logger.info("message received\n" + msg.getRandomID().toString());
@@ -348,7 +338,7 @@ public class KademliaInstance implements Runnable{
             logger.info("starting main thread");
             this.running.set(true);
             this.mainThread.start();
-            backgroundTasks = new BackgroundTasks(kBuckets, requestMap, this::nodeLookup, ownID);
+            backgroundTasks = new BackgroundTasks(kBuckets, requestMap, this::nodeLookup, ownID, outgoingChannel);
             return;
         }
         logger.info("start bootstrapping");
@@ -365,7 +355,7 @@ public class KademliaInstance implements Runnable{
                         logger.info("starting main thread");
                         this.running.set(true);
                         this.mainThread.start();
-                        backgroundTasks = new BackgroundTasks(kBuckets, requestMap, this::nodeLookup, ownID);
+                        backgroundTasks = new BackgroundTasks(kBuckets, requestMap, this::nodeLookup, ownID, outgoingChannel);
                         nodeLookup(ownID);
                         logger.info("bootstrapping finished");
                         break;

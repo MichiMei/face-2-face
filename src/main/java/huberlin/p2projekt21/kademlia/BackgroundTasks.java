@@ -1,9 +1,11 @@
 package huberlin.p2projekt21.kademlia;
 
 import java.math.BigInteger;
+import java.net.DatagramPacket;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
@@ -21,13 +23,15 @@ public class BackgroundTasks{
 
     private final BGT_UnansweredRequests unansweredRequests;
     private final BGT_KBucketLookup kBucketLookup;
+    // private final BGT_RegularPing regularPing; // TODO uncomment when ready
 
     /**
      * Creates and starts all Background tasks
      */
-    public BackgroundTasks(KBuckets kBuckets, Map<BigInteger, KademliaInstance.RequestCookie> requestMap, NodeLookupMethod method, BigInteger ownID) {
+    public BackgroundTasks(KBuckets kBuckets, Map<BigInteger, KademliaInstance.RequestCookie> requestMap, NodeLookupMethod method, BigInteger ownID, ConcurrentLinkedDeque<DatagramPacket> outgoingChannel) {
         unansweredRequests = new BGT_UnansweredRequests(kBuckets, requestMap);
         kBucketLookup = new BGT_KBucketLookup(kBuckets, method, ownID);
+        // regularPing = new BGT_RegularPing(kBuckets, outgoingChannel); // TODO uncomment when ready
     }
 
     /**
@@ -36,6 +40,7 @@ public class BackgroundTasks{
     public void stop() {
         unansweredRequests.stop();
         kBucketLookup.stop();
+        // regularPing.stop(); // TODO uncomment when ready
     }
 
     public interface NodeLookupMethod {
@@ -196,6 +201,44 @@ public class BackgroundTasks{
                 }
             }
             logger.info("stopped BGT_UnansweredRequests");
+        }
+
+        /**
+         * Eventually stop the BG-task
+         */
+        public void stop() {
+            running.set(false);
+        }
+    }
+
+    public static class BGT_RegularPing implements Runnable {
+
+        private final KBuckets kBuckets;
+        private final ConcurrentLinkedDeque<DatagramPacket> outgoingChannel;
+
+        private final Logger logger;
+        private final AtomicBoolean running;
+
+        /**
+         * Creates and starts a regular ping background task
+         *
+         * @param kBuckets kBuckets reference to remove not answering nodes
+         */
+        public BGT_RegularPing(KBuckets kBuckets, ConcurrentLinkedDeque<DatagramPacket> outgoingChannel) {
+            this.kBuckets = kBuckets;
+            this.outgoingChannel = outgoingChannel;
+            logger = Logger.getGlobal();
+            running = new AtomicBoolean(true);
+            new Thread(this).start();
+            logger.info("started BGT_RegularPing");
+        }
+
+        @Override
+        public void run() {
+            while (running.get()) {
+                // TODO
+            }
+            logger.info("stopped BGT_RegularPing");
         }
 
         /**

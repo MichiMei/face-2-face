@@ -51,7 +51,7 @@ public class Controller {
         Controller controller = new Controller(ownPort);
         //controller.readBootstrappingAddress();  // uncomment if initial node
         controller.ip = InetAddress.getByName("192.168.178.21");
-        controller.port = 51192;
+        controller.port = 50571;
 
         controller.manualController();
     }
