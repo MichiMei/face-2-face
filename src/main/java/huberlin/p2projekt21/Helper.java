@@ -1,5 +1,7 @@
 package huberlin.p2projekt21;
 
+import huberlin.p2projekt21.kademlia.KademliaInstance;
+
 import java.math.BigInteger;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
@@ -7,8 +9,11 @@ import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Random;
 
 public class Helper {
+
+    private static Random random = new Random();
 
     /**
      * Calculates the 256-bit hash for the given public key
@@ -44,6 +49,14 @@ public class Helper {
      */
     public static PublicKey getPublicKeyFromBytes(byte[] key) throws NoSuchAlgorithmException, InvalidKeySpecException {
         return KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(key));
+    }
+
+    /**
+     * Generate new RandomID
+     * @return new RandomID
+     */
+    public static BigInteger getRandomID() {
+        return new BigInteger(KademliaInstance.RANDOM_ID_LENGTH, random);
     }
 
 }
