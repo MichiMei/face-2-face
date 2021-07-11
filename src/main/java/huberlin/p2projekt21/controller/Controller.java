@@ -1,5 +1,6 @@
 package huberlin.p2projekt21.controller;
 
+import huberlin.p2projekt21.Helper;
 import huberlin.p2projekt21.crypto.Crypto;
 import huberlin.p2projekt21.gui.MainGui;
 import huberlin.p2projekt21.kademlia.Data;
@@ -29,6 +30,8 @@ import java.util.logging.Handler;
 import java.util.logging.Logger;
 
 public class Controller {
+
+    public static final boolean ENABLE_FILE_LOGGING = true;
 
     private static final byte[] PREFIX = {48, -126, 1, 34, 48, 13, 6, 9, 42, -122, 72, -122, -9, 13, 1, 1, 1, 5, 0, 3, -126, 1, 15, 0, 48, -126, 1, 10, 2, -126, 1, 1, 0};
     private static final byte[] SUFFIX = {2, 3, 1, 0, 1};
@@ -190,69 +193,11 @@ public class Controller {
         }
     }
 
-    /**
-     * Transforms BigInteger representation of a public key into a PublicKey Object
-     *
-     * @param key BigInteger public key
-     * @return public key as PublicKey
-     */
-    private PublicKey bigIntegerKeyToPublicKey(BigInteger key) {
-        // transform BigInteger to byte[256]
-        byte[] bytes = new byte[KademliaInstance.NODE_ID_LENGTH/8];
-        assert (key.compareTo(BigInteger.ZERO) >= 0);
-        byte[] tmp = key.toByteArray();
-        if (tmp.length == bytes.length+1) {
-            // remove sign
-            System.arraycopy(tmp, 1, bytes, 0, bytes.length);
-        } else if (tmp.length <= bytes.length) {
-            // copy to end of bytes
-            System.arraycopy(tmp, 0, bytes, bytes.length-tmp.length, tmp.length);
-        } else {
-            // undefined
-            assert(true);
-        }
-        // add prefix and suffix
-        byte[] bytesKey = new byte[PREFIX.length+bytes.length+ SUFFIX.length];
-        System.arraycopy(PREFIX, 0, bytesKey, 0, PREFIX.length);
-        System.arraycopy(bytes, 0, bytesKey, PREFIX.length, bytes.length);
-        System.arraycopy(SUFFIX, 0, bytesKey, PREFIX.length+bytes.length, SUFFIX.length);
-
-        // transform byte[] into PublicKey
-        try {
-            return KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(bytesKey));
-        } catch (InvalidKeySpecException | NoSuchAlgorithmException e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
-
-    /**
-     * Transforms PublicKey object into the BigInteger representation of a public key
-     *
-     * @param key PublicKey public key
-     * @return public key as BigInteger
-     */
-    private BigInteger publicKeyToBigIntegerKey(PublicKey key) {
-        int keyLength = KademliaInstance.NODE_ID_LENGTH/8;
-
-        // transform PublicKey into bytes[]
-        byte[] bytesKey = key.getEncoded();
-        // remove prefix and suffix
-        byte[] bytes = Arrays.copyOfRange(bytesKey, PREFIX.length, PREFIX.length+keyLength);
-        assert (bytes.length == keyLength);
-        assert (bytesKey.length-(PREFIX.length+keyLength) == SUFFIX.length);
-        byte[] prefix = Arrays.copyOfRange(bytesKey, 0, PREFIX.length);
-        assert (Arrays.equals(prefix, PREFIX));
-        byte[] suffix = Arrays.copyOfRange(bytesKey, PREFIX.length+KademliaInstance.NODE_ID_LENGTH+1, bytesKey.length);
-        assert (Arrays.equals(suffix, SUFFIX));
-        // transform to BigInteger(sign==1)
-        return new BigInteger(1, bytes);
-    }
-
-    public void init() throws IOException, InvalidKeySpecException, NoSuchAlgorithmException {
+    public void init() throws Exception {
         ownPublicKey = Crypto.getStoredPublicKey();
 
-        addHandler();
+        if (ENABLE_FILE_LOGGING) addHandler();  // Log to file
+
         this.socket = DatagramChannel.open().bind(own);
         printOwnIP(socket);
 
@@ -267,6 +212,13 @@ public class Controller {
 
         this.kademlia = new KademliaInstance(receiverChannel, senderChannel);
         this.kademlia.start(ip, port);
+
+        // initial publish
+        byte[][] tmp = Storage.read(Helper.hashForKey(ownPublicKey));
+        if (tmp != null) {
+            Data data = new Data(tmp);
+            kademlia.store(data);
+        }
 
         new MainGui(this, ownPublicKey);
     }
@@ -291,26 +243,6 @@ public class Controller {
             e.printStackTrace();
             Logger.getGlobal().warning("could not get own ip\n" + e.getMessage());
         }
-    }
-
-    private void readBootstrappingAddress() throws IOException {
-        System.out.println("Please insert bootstrapping IP: e.g. 'xxx.xxx.xxx.xxx:port'");
-        System.out.println("Empty skips bootstrapping");
-
-        String input = new BufferedReader(new InputStreamReader(System.in)).readLine();
-        System.out.println("input: " + input);
-
-        if (input.trim().length() == 0) return;
-
-        int separator = input.lastIndexOf(':');
-        port = Integer.parseInt(input.substring(separator+1));
-        //System.out.println("port: " + port);
-
-        String address = input.substring(0, separator);
-        //System.out.println("address: " + address);
-
-        if (address.charAt(0) == '/') address = address.substring(1);
-        ip = InetAddress.getByName(address);
     }
 
     private void addHandler() throws IOException {

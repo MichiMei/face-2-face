@@ -370,8 +370,17 @@ public class KademliaInstance implements Runnable{
         logger.info("store(" + data.getKeyHash().toString(16) + ")");
         // store locally
         localHashTable.store(data);
+
         // store in network
-        return publishData(data);
+        boolean success = publishData(data);
+        if (success) {
+            // stored successfully -> mark published (with current time)
+            ownData.put(data.getKeyHash(), System.currentTimeMillis());
+        } else {
+            // store failed -> mark unpublished
+            ownData.put(data.getKeyHash(), (long)-1);
+        }
+        return success;
     }
 
     /**
