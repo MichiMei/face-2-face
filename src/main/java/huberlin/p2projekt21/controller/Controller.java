@@ -64,8 +64,8 @@ public class Controller {
 
         Controller controller = new Controller(ownPort);
         //controller.readBootstrappingAddress();
-        controller.ip = InetAddress.getByName("192.168.178.21");
-        controller.port = 50571;
+        //controller.ip = InetAddress.getByName("192.168.178.21");
+        //controller.port = 50571;
         if (args.length >= 3) {
             controller.ip = InetAddress.getByName(args[1]);
             controller.port = Integer.parseInt(args[2]);

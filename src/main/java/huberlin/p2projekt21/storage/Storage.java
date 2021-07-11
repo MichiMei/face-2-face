@@ -43,7 +43,7 @@ public class Storage {
 
         Files.write(dataP, data);
         Files.write(sigP, signature);
-        Files.write(keyP, signature);
+        Files.write(keyP, key);
     }
 
     /**
