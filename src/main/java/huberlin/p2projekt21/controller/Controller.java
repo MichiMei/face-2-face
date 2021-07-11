@@ -3,6 +3,7 @@ package huberlin.p2projekt21.controller;
 import huberlin.p2projekt21.Helper;
 import huberlin.p2projekt21.crypto.Crypto;
 import huberlin.p2projekt21.gui.MainGui;
+import huberlin.p2projekt21.gui.StartDialog;
 import huberlin.p2projekt21.kademlia.Data;
 import huberlin.p2projekt21.kademlia.KademliaInstance;
 import huberlin.p2projekt21.networking.Receiver;
@@ -19,10 +20,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.*;
-import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 import java.sql.Timestamp;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.logging.FileHandler;
@@ -31,10 +30,8 @@ import java.util.logging.Logger;
 
 public class Controller {
 
-    public static final boolean ENABLE_FILE_LOGGING = true;
-
-    private static final byte[] PREFIX = {48, -126, 1, 34, 48, 13, 6, 9, 42, -122, 72, -122, -9, 13, 1, 1, 1, 5, 0, 3, -126, 1, 15, 0, 48, -126, 1, 10, 2, -126, 1, 1, 0};
-    private static final byte[] SUFFIX = {2, 3, 1, 0, 1};
+    public static final boolean ENABLE_GUI          =   true;
+    public static final boolean ENABLE_FILE_LOGGING =   true;
 
     private DatagramChannel socket;
     private Sender sender;
@@ -45,8 +42,8 @@ public class Controller {
     // own port
     private final SocketAddress own;
     // bootstrapping
-    private InetAddress ip = null;
-    private int port = -1;
+    private final InetAddress ip;
+    private final int port;
 
     /**
      * start program
@@ -57,6 +54,7 @@ public class Controller {
      * @throws IOException .
      */
     public static void main(String[] args) throws Exception {
+        // read own port and bootstrapping address from parameters
         int ownPort = -1;
         if (args.length >= 1) {
             ownPort = Integer.parseInt(args[0]);
@@ -64,20 +62,40 @@ public class Controller {
                 ownPort = -1;
             }
         }
-
-        Controller controller = new Controller(ownPort);
-        //controller.readBootstrappingAddress();
-        //controller.ip = InetAddress.getByName("192.168.178.21");
-        //controller.port = 50571;
+        InetAddress btAddress = null;
+        int btPort = -1;
         if (args.length >= 3) {
-            controller.ip = InetAddress.getByName(args[1]);
-            controller.port = Integer.parseInt(args[2]);
+            btAddress = InetAddress.getByName(args[1]);
+            btPort = Integer.parseInt(args[2]);
         }
 
-        controller.manualController();
+        // GUI ask for port and bootstrapping
+        if (ENABLE_GUI) {
+            StartDialog startDialog = new StartDialog(ownPort, btAddress, btPort);
+            var res = startDialog.display();
+            if (res == null) {
+                return;
+            } else {
+                ownPort = res.ownPort;
+                btAddress = res.bootstrappingAddress;
+                btPort = res.bootstrappingPort;
+            }
+        }
+
+        // create controller
+        Controller controller = new Controller(ownPort, btAddress, btPort);
+
+        // start gui or manual controller
+        if (ENABLE_GUI) controller.guiController();
+        else            controller.manualController();
     }
 
-    public void manualController() throws Exception {
+    /**
+     * Initialize controller and start manual (console-based) controller
+     *
+     * @throws Exception .
+     */
+    private void manualController() throws Exception {
         // initialize
         init();
 
@@ -143,8 +161,21 @@ public class Controller {
     }
 
     /**
+     * Initializes the controller and starts the GUI
+     *
+     * @throws Exception .
+     */
+    private void guiController() throws Exception {
+        init();
+        new MainGui(this, ownPublicKey);
+    }
+
+    /**
      * Creates signature for the data (with own privateKey)
      * Stores it locally and in the network using the own publicKey
+     *
+     * !!!WARNING: Will block for possibly a really long time!!!
+     * !!!only call from asynchronous context!!!
      *
      * @param data byte representation of the data to be stored
      * @return true, if stored 'globally', false if only stored locally
@@ -169,6 +200,9 @@ public class Controller {
      * Loads the data for the specified key
      * Loads it from local storage if possible or the network
      *
+     * !!!WARNING: Will block for possibly a really long time!!!
+     * !!!only call from asynchronous context!!!
+     *
      * @param key for the requested data
      * @return byte representation of the requested data or null if not found
      */
@@ -185,21 +219,55 @@ public class Controller {
         }
     }
 
-    public Controller(int ownPort) {
+    /**
+     * Create Controller
+     *
+     * @param ownPort   desired own port, -1 for arbitrary port
+     * @param btAddress bootstrapping address, empty for new network
+     * @param btPort    bootstrapping port, empty for new network
+     */
+    private Controller(int ownPort, InetAddress btAddress, int btPort) {
         if (ownPort >= 0 && ownPort <= 65535) {
             own = new InetSocketAddress(ownPort);
         } else {
             own = null;
         }
+        this.ip = btAddress;
+        if (btPort >= 0 && btPort <= 65535)
+            port = btPort;
+        else
+            port = -1;
     }
 
-    public void init() throws Exception {
+    /**
+     * Shut down program
+     *
+     * @throws IOException .
+     */
+    public void terminate() throws IOException {
+        this.sender.terminate();
+        this.receiver.terminate();
+        this.kademlia.stop();
+        this.socket.close();
+        closeHandler();
+    }
+
+    /**
+     * Initialize controller
+     * Open UDP socket
+     * Start kademlia
+     * Create transfer channel
+     *
+     * @throws Exception .
+     */
+    private void init() throws Exception {
         ownPublicKey = Crypto.getStoredPublicKey();
 
         if (ENABLE_FILE_LOGGING) addHandler();  // Log to file
 
         this.socket = DatagramChannel.open().bind(own);
-        printOwnIP(socket);
+        printOwnLocalIP(socket);
+        printGlobalIO();
 
         ConcurrentLinkedDeque<DatagramPacket> senderChannel = new ConcurrentLinkedDeque<>();
         ConcurrentLinkedDeque<DatagramPacket> receiverChannel = new ConcurrentLinkedDeque<>();
@@ -214,37 +282,57 @@ public class Controller {
         this.kademlia.start(ip, port);
 
         // initial publish
-        byte[][] tmp = Storage.read(Helper.hashForKey(ownPublicKey));
-        if (tmp != null) {
-            Data data = new Data(tmp);
-            kademlia.store(data);
-        }
+        new Thread(() -> {
+            try {
+                byte[][] tmp = Storage.read(ownPublicKey.getEncoded());
+                if (tmp != null) {
+                    Data data = new Data(tmp);
+                    kademlia.store(data);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
 
-        new MainGui(this, ownPublicKey);
+        }).start();
     }
 
-    public void terminate() throws IOException {
-        this.sender.terminate();
-        this.receiver.terminate();
-        this.kademlia.stop();
-        this.socket.close();
-        closeHandler();
-    }
-
-    private void printOwnIP(DatagramChannel socket) {
+    /**
+     * Tries to get the local ip and print it
+     *
+     * @param socket used socket to receive port
+     */
+    private void printOwnLocalIP(DatagramChannel socket) {
         try(final DatagramSocket tmp = new DatagramSocket()){
             tmp.connect(InetAddress.getByName("8.8.8.8"), 10002);
             InetAddress ip = tmp.getLocalAddress();
             String socketAddress = socket.getLocalAddress().toString();
             String port = socketAddress.substring(socketAddress.lastIndexOf(':')+1);
-            System.out.println(ip.toString() + ":" + port);
-            Logger.getGlobal().info("own address " + ip.toString() + ":" + port);
+            System.out.println("internalAddress: " + ip.toString() + ":" + port);
+            Logger.getGlobal().info("internalAddress " + ip.toString() + ":" + port);
         } catch (IOException e) {
             e.printStackTrace();
             Logger.getGlobal().warning("could not get own ip\n" + e.getMessage());
         }
     }
 
+    /**
+     * Tries to get the global ip and print it
+     * (Port can't be determined as a different socket is used)
+     * (Use local port, hoping the NAT is kind)
+     */
+    private void printGlobalIO() throws IOException {
+        URL whatIsIyIP = new URL("http://checkip.amazonaws.com");
+        BufferedReader in = new BufferedReader(new InputStreamReader(whatIsIyIP.openStream()));
+        String address = in.readLine();
+        System.out.println("externalAddress: " + address);
+        Logger.getGlobal().info("externalAddress " + address);
+    }
+
+    /**
+     * Add FileHandle to Logger
+     *
+     * @throws IOException .
+     */
     private void addHandler() throws IOException {
         Path directory = Paths.get("logs");
         if (Files.notExists(directory)) Files.createDirectory(directory);
@@ -257,6 +345,9 @@ public class Controller {
         Logger.getGlobal().addHandler(new FileHandler(file.toString()));
     }
 
+    /**
+     * Close FileHandle of Logger (to remove lock)
+     */
     private void closeHandler() {
         for (Handler handler : Logger.getGlobal().getHandlers()) {
             handler.close();

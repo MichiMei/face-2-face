@@ -658,6 +658,7 @@ public class KademliaInstance implements Runnable{
     /**
      * Find value for the specified key
      * cf. 2.2 Kademlia protocol
+     *
      * !!!WARNING: Will block for possibly a really long time!!!
      * !!!only call from asynchronous context!!!
      *
