@@ -20,6 +20,7 @@ public class BackgroundTasks{
     public static final long UNANSWERED_TIMEOUT = 10 * 1000;            // 10 seconds
 
     // TODO implement regular-ping
+    // TODO implement regular-republish
 
     private final BGT_UnansweredRequests unansweredRequests;
     private final BGT_KBucketLookup kBucketLookup;

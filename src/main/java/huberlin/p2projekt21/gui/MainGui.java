@@ -1,5 +1,6 @@
 package huberlin.p2projekt21.gui;
 
+import huberlin.p2projekt21.Helper;
 import huberlin.p2projekt21.controller.Controller;
 
 import javax.swing.*;
@@ -8,20 +9,31 @@ import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.security.NoSuchAlgorithmException;
+import java.security.PublicKey;
 import java.util.Locale;
+import java.util.ResourceBundle;
 import java.util.concurrent.ExecutionException;
 
 public class MainGui extends JFrame {
 
-    public static void main(String[] args) {
+    private final ResourceBundle resources;
+
+    public static void main(String[] args) throws NoSuchAlgorithmException {
         Locale.setDefault(Locale.US);
-        new MainGui(null, BigInteger.ONE);
+        new MainGui(null, null);
     }
 
-    public MainGui(Controller controller, BigInteger ownKey) {
+    public MainGui(Controller controller, PublicKey ownKey) throws NoSuchAlgorithmException {
         super();
 
-        ownKeyTextField.setText(ownKey.toString(16));
+        this.resources = ResourceBundle.getBundle("StringLiterals");
+
+        ownKeyTextField.setText("<null>");
+        if (ownKey != null) {
+            byte[] hash = Helper.hashForKey(ownKey);
+            if (hash != null) ownKeyTextField.setText(bytesToHex(hash));
+        }
 
         uploadButton.addActionListener(e -> {
             uploadButton.setEnabled(false);
@@ -30,8 +42,7 @@ public class MainGui extends JFrame {
             new SwingWorker<Boolean, Object>() {
                 @Override
                 protected Boolean doInBackground() {
-                    // return controller.store(text.getBytes());    // TODO needs to be implemented first
-                    return false;
+                    return controller.store(text.getBytes());
                 }
                 @Override
                 protected void done() {
@@ -60,21 +71,20 @@ public class MainGui extends JFrame {
             new SwingWorker<byte[], Object>() {
                 @Override
                 protected byte[] doInBackground() {
-                    // return controller.load(key);    // TODO needs to be implemented first
-                    return null;
+                    return controller.load(key);
                 }
                 @Override
                 protected void done() {
                     try {
                         byte[] result = get();
                         if (result == null) {
-                            // TODO display failed (not existent or network failed)
+                            friendFileTextArea.setText(resources.getString("search_failed"));
                         } else {
                             friendFileTextArea.setText(new String(result));
                         }
                     } catch (InterruptedException | ExecutionException e) {
                         e.printStackTrace();
-                        // TODO handle
+                        friendFileTextArea.setText(resources.getString("search_failed"));
                     }
                     searchButton.setEnabled(true);
                 }
@@ -116,6 +126,17 @@ public class MainGui extends JFrame {
 
         this.setContentPane(mainPanel);
         this.setVisible(true);
+    }
+
+    private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
+    private static String bytesToHex(byte[] bytes) {
+        char[] hexChars = new char[bytes.length * 2];
+        for (int j = 0; j < bytes.length; j++) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = HEX_ARRAY[v >>> 4];
+            hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
+        }
+        return new String(hexChars);
     }
 
     private JPanel mainPanel;

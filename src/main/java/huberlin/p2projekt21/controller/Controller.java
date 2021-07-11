@@ -1,8 +1,12 @@
 package huberlin.p2projekt21.controller;
 
+import huberlin.p2projekt21.crypto.Crypto;
+import huberlin.p2projekt21.gui.MainGui;
+import huberlin.p2projekt21.kademlia.Data;
 import huberlin.p2projekt21.kademlia.KademliaInstance;
 import huberlin.p2projekt21.networking.Receiver;
 import huberlin.p2projekt21.networking.Sender;
+import huberlin.p2projekt21.storage.Storage;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -13,7 +17,11 @@ import java.nio.channels.DatagramChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.*;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.X509EncodedKeySpec;
 import java.sql.Timestamp;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.logging.FileHandler;
@@ -22,10 +30,14 @@ import java.util.logging.Logger;
 
 public class Controller {
 
+    private static final byte[] PREFIX = {48, -126, 1, 34, 48, 13, 6, 9, 42, -122, 72, -122, -9, 13, 1, 1, 1, 5, 0, 3, -126, 1, 15, 0, 48, -126, 1, 10, 2, -126, 1, 1, 0};
+    private static final byte[] SUFFIX = {2, 3, 1, 0, 1};
+
     private DatagramChannel socket;
     private Sender sender;
     private Receiver receiver;
     private KademliaInstance kademlia;
+    private PublicKey ownPublicKey;
 
     // own port
     private final SocketAddress own;
@@ -36,7 +48,9 @@ public class Controller {
     /**
      * start program
      *
-     * @param args args[0]==ownPort, empty for arbitrary port
+     * @param args args[0]==ownPort, -1 or empty for arbitrary port
+     *             args[1]==bootstrapping ip, empty for skip
+     *             args[2]==bootstrapping port, empty for skip
      * @throws IOException .
      */
     public static void main(String[] args) throws Exception {
@@ -49,7 +63,7 @@ public class Controller {
         }
 
         Controller controller = new Controller(ownPort);
-        //controller.readBootstrappingAddress();  // uncomment if initial node
+        //controller.readBootstrappingAddress();
         controller.ip = InetAddress.getByName("192.168.178.21");
         controller.port = 50571;
         if (args.length >= 3) {
@@ -60,7 +74,7 @@ public class Controller {
         controller.manualController();
     }
 
-    public void manualController() throws Exception {// initialize kademlia
+    public void manualController() throws Exception {
         // initialize
         init();
 
@@ -125,6 +139,49 @@ public class Controller {
         terminate();
     }
 
+    /**
+     * Creates signature for the data (with own privateKey)
+     * Stores it locally and in the network using the own publicKey
+     *
+     * @param data byte representation of the data to be stored
+     * @return true, if stored 'globally', false if only stored locally
+     */
+    public boolean store(byte[] data) {
+        byte[] signature;
+        try {
+            // sign data
+            signature = Crypto.signWithStoredKey(data);
+            // store locally
+            Storage.storeOwn(data);
+            // kademlia store
+            Data tmp = new Data(data, signature, ownPublicKey.getEncoded());
+            return kademlia.store(tmp);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * Loads the data for the specified key
+     * Loads it from local storage if possible or the network
+     *
+     * @param key for the requested data
+     * @return byte representation of the requested data or null if not found
+     */
+    public byte[] load(BigInteger key) {
+        try {
+            // kademlia load
+            Data data = kademlia.getValueData(key);
+            // verify signature
+            Crypto.verify(data.getData(), data.getSignature(), KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(data.getPublicKey())));
+            return data.getData();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     public Controller(int ownPort) {
         if (ownPort >= 0 && ownPort <= 65535) {
             own = new InetSocketAddress(ownPort);
@@ -133,7 +190,68 @@ public class Controller {
         }
     }
 
-    public void init() throws IOException {
+    /**
+     * Transforms BigInteger representation of a public key into a PublicKey Object
+     *
+     * @param key BigInteger public key
+     * @return public key as PublicKey
+     */
+    private PublicKey bigIntegerKeyToPublicKey(BigInteger key) {
+        // transform BigInteger to byte[256]
+        byte[] bytes = new byte[KademliaInstance.NODE_ID_LENGTH/8];
+        assert (key.compareTo(BigInteger.ZERO) >= 0);
+        byte[] tmp = key.toByteArray();
+        if (tmp.length == bytes.length+1) {
+            // remove sign
+            System.arraycopy(tmp, 1, bytes, 0, bytes.length);
+        } else if (tmp.length <= bytes.length) {
+            // copy to end of bytes
+            System.arraycopy(tmp, 0, bytes, bytes.length-tmp.length, tmp.length);
+        } else {
+            // undefined
+            assert(true);
+        }
+        // add prefix and suffix
+        byte[] bytesKey = new byte[PREFIX.length+bytes.length+ SUFFIX.length];
+        System.arraycopy(PREFIX, 0, bytesKey, 0, PREFIX.length);
+        System.arraycopy(bytes, 0, bytesKey, PREFIX.length, bytes.length);
+        System.arraycopy(SUFFIX, 0, bytesKey, PREFIX.length+bytes.length, SUFFIX.length);
+
+        // transform byte[] into PublicKey
+        try {
+            return KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(bytesKey));
+        } catch (InvalidKeySpecException | NoSuchAlgorithmException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Transforms PublicKey object into the BigInteger representation of a public key
+     *
+     * @param key PublicKey public key
+     * @return public key as BigInteger
+     */
+    private BigInteger publicKeyToBigIntegerKey(PublicKey key) {
+        int keyLength = KademliaInstance.NODE_ID_LENGTH/8;
+
+        // transform PublicKey into bytes[]
+        byte[] bytesKey = key.getEncoded();
+        // remove prefix and suffix
+        byte[] bytes = Arrays.copyOfRange(bytesKey, PREFIX.length, PREFIX.length+keyLength);
+        assert (bytes.length == keyLength);
+        assert (bytesKey.length-(PREFIX.length+keyLength) == SUFFIX.length);
+        byte[] prefix = Arrays.copyOfRange(bytesKey, 0, PREFIX.length);
+        assert (Arrays.equals(prefix, PREFIX));
+        byte[] suffix = Arrays.copyOfRange(bytesKey, PREFIX.length+KademliaInstance.NODE_ID_LENGTH+1, bytesKey.length);
+        assert (Arrays.equals(suffix, SUFFIX));
+        // transform to BigInteger(sign==1)
+        return new BigInteger(1, bytes);
+    }
+
+    public void init() throws IOException, InvalidKeySpecException, NoSuchAlgorithmException {
+        ownPublicKey = Crypto.getStoredPublicKey();
+
         addHandler();
         this.socket = DatagramChannel.open().bind(own);
         printOwnIP(socket);
@@ -149,6 +267,8 @@ public class Controller {
 
         this.kademlia = new KademliaInstance(receiverChannel, senderChannel);
         this.kademlia.start(ip, port);
+
+        new MainGui(this, ownPublicKey);
     }
 
     public void terminate() throws IOException {

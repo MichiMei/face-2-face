@@ -1,7 +1,12 @@
 package huberlin.p2projekt21.kademlia;
 
+import huberlin.p2projekt21.storage.Storage;
+
+import java.io.IOException;
 import java.math.BigInteger;
-import java.util.Map;
+import java.security.NoSuchAlgorithmException;
+import java.security.spec.InvalidKeySpecException;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -9,18 +14,28 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class LocalHashTable {
 
-    private final Map<BigInteger, byte[]> localStorage;
+    private final Set<BigInteger> localStorage;
 
     public LocalHashTable() {
-        localStorage = new ConcurrentHashMap<>();
+        localStorage = ConcurrentHashMap.newKeySet();
     }
 
-    public byte[] load(BigInteger key) {
-        return localStorage.get(key);
+    public Data load(BigInteger key) {
+        if (localStorage.contains(key)) {
+            try {
+                byte[][] tmp = Storage.read(key);
+                return new Data(tmp);
+            } catch (IOException | NullPointerException e) {
+                e.printStackTrace();
+                return null;
+            }
+        }
+        return null;
     }
 
-    public void store(BigInteger key, byte[] value) {
-        localStorage.put(key, value);
+    public void store(Data data) throws IOException, InvalidKeySpecException, NoSuchAlgorithmException {
+        localStorage.add(data.getKeyHash());
+        Storage.store(data.getKeyHash(), data.getData(), data.getSignature(), data.getPublicKey());
     }
 
 }
