@@ -1,6 +1,7 @@
 package huberlin.p2projekt21.properties;
 
 import java.io.*;
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Properties;
 
@@ -9,7 +10,7 @@ import java.util.Properties;
  */
 public class PropertiesSingleton {
     private static PropertiesSingleton INSTANCE;
-    private final static String PATH = Paths.get("./src/main/resources/application.properties").toAbsolutePath().toString();
+    private final static String FILE_NAME = "application.properties";
     private Properties properties;
 
     /**
@@ -25,7 +26,12 @@ public class PropertiesSingleton {
 
     public PropertiesSingleton() throws IOException {
         this.properties = new Properties();
-        this.properties.load(new FileInputStream(PATH));
+
+        if (Files.exists(Paths.get(FILE_NAME))) {
+            this.properties.load(new FileInputStream(FILE_NAME));
+        } else {
+            this.properties.load(getClass().getClassLoader().getResourceAsStream(FILE_NAME));
+        }
     }
 
     /**
@@ -63,6 +69,7 @@ public class PropertiesSingleton {
      * @throws IOException
      */
     public void store() throws IOException {
-        properties.store(new FileOutputStream(PATH), null);
+        properties.store(new FileOutputStream(FILE_NAME), null);
+        properties.load(new FileInputStream(FILE_NAME));
     }
 }
