@@ -1,11 +1,10 @@
-package datagrams.messages;
-import datagrams.helpers.MessageConstants;
-import datagrams.helpers.PayloadConverter;
+package huberlin.p2projekt21.datagrams.messages;
+import huberlin.p2projekt21.datagrams.helpers.MessageConstants;
+import huberlin.p2projekt21.datagrams.helpers.PayloadConverter;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
-import java.util.Arrays;
 import java.util.concurrent.ThreadLocalRandom;
 import java.net.InetAddress;
 import java.net.DatagramPacket;
@@ -83,7 +82,7 @@ public class GenericMessage {
         this.senderNodeID = senderNodeID;
     }
     public void setSenderNodeID(BigInteger senderNodeID) throws ArrayIndexOutOfBoundsException{
-        System.out.println("BITLENGTHS: " + senderNodeID.bitLength());
+        //System.out.println("BITLENGTHS: " + senderNodeID.bitLength());
         try{
             if (!MessageConstants.hasLessThan32Bytes(senderNodeID)){
                 throw new ArrayIndexOutOfBoundsException();

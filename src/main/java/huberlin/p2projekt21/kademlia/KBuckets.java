@@ -129,6 +129,19 @@ public class KBuckets {
     }
 
     /**
+     * Returns all nodes of the specified kBucket, with no received messages since the specified time
+     *
+     * @param index index of the desired kBucket
+     * @param time specified time
+     * @return list of inactive nodes
+     */
+    public List<KademliaNode> getInactive(int index, long time) {
+        assert (index >= 0);
+        assert (index < bucketCount);
+        return buckets[index].getInactive(time);
+    }
+
+    /**
      * Calculate the id of the bucket responsible for the given ID
      *
      * @param id ID of a searched node or value
@@ -259,6 +272,20 @@ public class KBuckets {
             this.lastLookup = System.currentTimeMillis();
         }
 
+        /**
+         * Returns all nodes of the this kBucket, with no received messages since the specified time
+         *
+         * @param time specified time
+         * @return list of inactive nodes
+         */
+        public synchronized List<KademliaNode> getInactive(long time) {
+            List<KademliaNode> result = new ArrayList<>();
+            for (var node : elements) {
+                if (node.inactiveSince(time)) result.add(node.node);
+            }
+            return result;
+        }
+
         public static class NodeValues implements Comparable<NodeValues> {
             private final KademliaNode node;
             private long ls;
@@ -294,6 +321,10 @@ public class KBuckets {
 
             public int getPort() {
                 return this.node.getPort();
+            }
+
+            public boolean inactiveSince(long time) {
+                return ls < time;
             }
         }
     }

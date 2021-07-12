@@ -1,8 +1,14 @@
 package huberlin.p2projekt21.controller;
 
+import huberlin.p2projekt21.Helper;
+import huberlin.p2projekt21.crypto.Crypto;
+import huberlin.p2projekt21.gui.MainGui;
+import huberlin.p2projekt21.gui.StartDialog;
+import huberlin.p2projekt21.kademlia.Data;
 import huberlin.p2projekt21.kademlia.KademliaInstance;
 import huberlin.p2projekt21.networking.Receiver;
 import huberlin.p2projekt21.networking.Sender;
+import huberlin.p2projekt21.storage.Storage;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -13,50 +19,98 @@ import java.nio.channels.DatagramChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.*;
+import java.security.spec.X509EncodedKeySpec;
 import java.sql.Timestamp;
 import java.util.Date;
+import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.logging.FileHandler;
 import java.util.logging.Handler;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 public class Controller {
+
+    public static final boolean ENABLE_FILE_LOGGING = false;
 
     private DatagramChannel socket;
     private Sender sender;
     private Receiver receiver;
     private KademliaInstance kademlia;
+    private PublicKey ownPublicKey;
 
     // own port
     private final SocketAddress own;
     // bootstrapping
-    private InetAddress ip = null;
-    private int port = -1;
+    private final InetAddress ip;
+    private final int port;
 
     /**
      * start program
      *
-     * @param args args[0]==ownPort, empty for arbitrary port
+     * @param args args[0]==type, 0=gui, 1=dummy, 2=publish-dummy;
+     *             args[1]==ownPort, -1 or empty for arbitrary port;
+     *             args[2]==bootstrapping ip, empty or -1 for skip;
+     *             args[3]==bootstrapping port, empty or -1 for skip;
+     *             args[4]==path of directory with default pages, only for type==2;
      * @throws IOException .
      */
     public static void main(String[] args) throws Exception {
-        int ownPort = -1;
+        // read parameters
+        int type = 0;                   // default type: gui
+        int ownPort = -1;               // default ownPort: arbitrary
+        InetAddress btAddress = null;   // default bootstrapping address: skip
+        int btPort = -1;                // default bootstrapping address: skip
+        String defaultPagesDir = null;  // none
         if (args.length >= 1) {
-            ownPort = Integer.parseInt(args[0]);
-            if (ownPort < 0 || ownPort > 65535) {
-                ownPort = -1;
+            type = Integer.parseInt(args[0]);
+            if (type < 0 || type > 2)   type = 0;
+        }
+        if (args.length >= 2) {
+            ownPort = Integer.parseInt(args[1]);
+            if (ownPort < 0 || ownPort > 65535) ownPort = -1;
+        }
+        if (args.length >= 4 && !args[2].equals("-1") && !args[3].equals("-1")) {
+            btAddress = InetAddress.getByName(args[2]);
+            btPort = Integer.parseInt(args[3]);
+        }
+        if (args.length >= 5) {
+            defaultPagesDir = args[4];
+        }
+
+        //ownPort = 30006;
+
+        // GUI ask for port and bootstrapping
+        if (type == 0) {
+            StartDialog startDialog = new StartDialog(ownPort, btAddress, btPort);
+            var res = startDialog.display();
+            if (res == null) {
+                return;
+            } else {
+                ownPort = res.ownPort;
+                btAddress = res.bootstrappingAddress;
+                btPort = res.bootstrappingPort;
             }
         }
 
-        Controller controller = new Controller(ownPort);
-        //controller.readBootstrappingAddress();  // uncomment if initial node
-        controller.ip = InetAddress.getByName("192.168.178.21");
-        controller.port = 51192;
+        // create controller
+        Controller controller = new Controller(ownPort, btAddress, btPort);
 
-        controller.manualController();
+        switch (type) {
+            case 0 -> controller.guiController();                           // start gui or manual controller
+            case 1 -> controller.dummyController();                         // start dummy-node
+            case 2 -> controller.dummyPublishController(defaultPagesDir);   // start dummy-publish-node
+        }
     }
 
-    public void manualController() throws Exception {// initialize kademlia
+    /**
+     * Initialize controller and start manual (console-based) controller
+     *
+     * @throws Exception .
+     */
+    @Deprecated
+    private void manualController() throws Exception {
         // initialize
         init();
 
@@ -121,18 +175,211 @@ public class Controller {
         terminate();
     }
 
-    public Controller(int ownPort) {
+    /**
+     * Initializes the controller and starts the GUI
+     *
+     * This is the main controller for users
+     *
+     * @throws Exception .
+     */
+    private void guiController() throws Exception {
+        Crypto.createPair();
+        ownPublicKey = Crypto.getStoredPublicKey();
+        init();
+        MainGui gui = new MainGui(this, ownPublicKey);
+
+        // load own page locally and in the network and restore
+        byte[][] stored = Storage.read(ownPublicKey.getEncoded());
+        Data networkData = kademlia.getValueData(Helper.bigIntHashForKey(ownPublicKey));
+        Data newest;
+        if (stored == null) {
+            // own page not stored locally
+            // restore network version
+            newest = networkData;
+        } else {
+            Data localData = new Data(stored);
+            // stored locally
+            if (networkData == null) {
+                // not stored in network -> restore local version
+                newest = localData;
+            } else {
+                // both found -> use newer version
+                if (localData.compareDate(networkData) < 0) {
+                    // network version is newer
+                    newest = networkData;
+                } else {
+                    // local version is newer
+                    newest = localData;
+                }
+            }
+        }
+        if (newest != null) {
+            gui.setOwnPage(newest.getPage());
+        } else {
+            gui.setOwnPage(null);
+        }
+
+        // initial publish own data
+        if (newest != null) {
+            kademlia.store(newest);
+        }
+    }
+
+    /**
+     * Initializes the controller
+     *
+     * This controller is for testing
+     * It participates in the network but can't publish
+     *
+     * @throws Exception .
+     */
+    private void dummyController() throws Exception {
+        init();
+    }
+
+    /**
+     * Initializes the controller
+     *
+     * This controller is for testing
+     * It participates in the network and will publish (and republish) a number of default pages
+     *
+     * @param inputPath String-path of the directory containing the default pages
+     * @throws Exception .
+     */
+    private void dummyPublishController(String inputPath) throws Exception {
+        init();
+
+        // publish provided default pages
+        String defaultPagesDir = "default_pages";
+        if (inputPath != null) defaultPagesDir = inputPath;
+        Path dir = Paths.get(defaultPagesDir);
+        if (Files.notExists(dir)) {
+            System.err.println("default page folder does not exist");
+            System.err.println(defaultPagesDir);
+            System.err.println("shutting down");
+            System.exit(-1);
+        }
+        Thread.sleep(5*1000);   // wait 5 seconds until network is created
+
+        List<Path> keys = Files.walk(dir)
+                .filter(Files::isRegularFile)
+                .filter(path -> path.getFileName().toString().endsWith(".pub"))
+                .collect(Collectors.toList());
+
+        for (Path key : keys) {
+            byte[] keyBytes = Files.readAllBytes(key);
+            byte[][] data = Storage.read(keyBytes);
+            if (data == null) {
+                Logger.getGlobal().warning("could not read file " + key.toString());
+                continue;
+            }
+            Data tmp = new Data(data);
+            kademlia.store(tmp);
+        }
+    }
+
+    /**
+     * Creates signature for the data (with own privateKey)
+     * Stores it locally and in the network using the own publicKey
+     *
+     * !!!WARNING: Will block for possibly a really long time!!!
+     * !!!only call from asynchronous context!!!
+     *
+     * @param data byte representation of the data to be stored
+     * @return true, if stored 'globally', false if only stored locally
+     */
+    public boolean store(byte[] data) {
+        byte[] signature;
+        long timeStamp = System.currentTimeMillis();
+        Data.Page page = new Data.Page(data, timeStamp);
+        try {
+            // sign data
+            signature = Crypto.signWithStoredKey(page.toBytes());
+            // store locally
+            Storage.storeOwn(page.toBytes());
+            // kademlia store
+            Data tmp = new Data(data, signature, ownPublicKey.getEncoded(), timeStamp);
+            return kademlia.store(tmp);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * Loads the page for the specified key
+     * Loads it from local storage if possible or the network
+     *
+     * !!!WARNING: Will block for possibly a really long time!!!
+     * !!!only call from asynchronous context!!!
+     *
+     * @param key for the requested data
+     * @return requested page (or null)
+     */
+    public Data.Page load(BigInteger key) {
+        try {
+            // kademlia load
+            Data data = kademlia.getValueData(key);
+            // verify signature
+            if (data != null) {
+                Crypto.verify(data.getPage().toBytes(), data.getSignature(), KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(data.getPublicKey())));
+                return data.getPage();
+            } else {
+                return null;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Create Controller
+     *
+     * @param ownPort   desired own port, -1 for arbitrary port
+     * @param btAddress bootstrapping address, empty for new network
+     * @param btPort    bootstrapping port, empty for new network
+     */
+    private Controller(int ownPort, InetAddress btAddress, int btPort) {
         if (ownPort >= 0 && ownPort <= 65535) {
             own = new InetSocketAddress(ownPort);
         } else {
             own = null;
         }
+        this.ip = btAddress;
+        if (btPort >= 0 && btPort <= 65535)
+            port = btPort;
+        else
+            port = -1;
     }
 
-    public void init() throws IOException {
-        addHandler();
+    /**
+     * Shut down program
+     *
+     * @throws IOException .
+     */
+    public void terminate() throws IOException {
+        this.sender.terminate();
+        this.receiver.terminate();
+        this.kademlia.stop();
+        this.socket.close();
+        closeHandler();
+    }
+
+    /**
+     * Initialize controller
+     * Open UDP socket
+     * Start kademlia
+     * Create transfer channel
+     *
+     * @throws Exception .
+     */
+    private void init() throws Exception {
+        if (ENABLE_FILE_LOGGING) addHandler();  // Log to file
+
         this.socket = DatagramChannel.open().bind(own);
-        printOwnIP(socket);
+        printOwnLocalIP(socket);
+        printGlobalIO();
 
         ConcurrentLinkedDeque<DatagramPacket> senderChannel = new ConcurrentLinkedDeque<>();
         ConcurrentLinkedDeque<DatagramPacket> receiverChannel = new ConcurrentLinkedDeque<>();
@@ -147,48 +394,43 @@ public class Controller {
         this.kademlia.start(ip, port);
     }
 
-    public void terminate() throws IOException {
-        this.sender.terminate();
-        this.receiver.terminate();
-        this.kademlia.stop();
-        this.socket.close();
-        closeHandler();
-    }
-
-    private void printOwnIP(DatagramChannel socket) {
+    /**
+     * Tries to get the local ip and print it
+     *
+     * @param socket used socket to receive port
+     */
+    private void printOwnLocalIP(DatagramChannel socket) {
         try(final DatagramSocket tmp = new DatagramSocket()){
             tmp.connect(InetAddress.getByName("8.8.8.8"), 10002);
             InetAddress ip = tmp.getLocalAddress();
             String socketAddress = socket.getLocalAddress().toString();
             String port = socketAddress.substring(socketAddress.lastIndexOf(':')+1);
-            System.out.println(ip.toString() + ":" + port);
-            Logger.getGlobal().info("own address " + ip.toString() + ":" + port);
+            System.out.println("internalAddress: " + ip.toString() + ":" + port);
+            Logger.getGlobal().info("internalAddress " + ip.toString() + ":" + port);
         } catch (IOException e) {
             e.printStackTrace();
             Logger.getGlobal().warning("could not get own ip\n" + e.getMessage());
         }
     }
 
-    private void readBootstrappingAddress() throws IOException {
-        System.out.println("Please insert bootstrapping IP: e.g. 'xxx.xxx.xxx.xxx:port'");
-        System.out.println("Empty skips bootstrapping");
-
-        String input = new BufferedReader(new InputStreamReader(System.in)).readLine();
-        System.out.println("input: " + input);
-
-        if (input.trim().length() == 0) return;
-
-        int separator = input.lastIndexOf(':');
-        port = Integer.parseInt(input.substring(separator+1));
-        //System.out.println("port: " + port);
-
-        String address = input.substring(0, separator);
-        //System.out.println("address: " + address);
-
-        if (address.charAt(0) == '/') address = address.substring(1);
-        ip = InetAddress.getByName(address);
+    /**
+     * Tries to get the global ip and print it
+     * (Port can't be determined as a different socket is used)
+     * (Use local port, hoping the NAT is kind)
+     */
+    private void printGlobalIO() throws IOException {
+        URL whatIsIyIP = new URL("http://checkip.amazonaws.com");
+        BufferedReader in = new BufferedReader(new InputStreamReader(whatIsIyIP.openStream()));
+        String address = in.readLine();
+        System.out.println("externalAddress: " + address);
+        Logger.getGlobal().info("externalAddress " + address);
     }
 
+    /**
+     * Add FileHandle to Logger
+     *
+     * @throws IOException .
+     */
     private void addHandler() throws IOException {
         Path directory = Paths.get("logs");
         if (Files.notExists(directory)) Files.createDirectory(directory);
@@ -201,6 +443,9 @@ public class Controller {
         Logger.getGlobal().addHandler(new FileHandler(file.toString()));
     }
 
+    /**
+     * Close FileHandle of Logger (to remove lock)
+     */
     private void closeHandler() {
         for (Handler handler : Logger.getGlobal().getHandlers()) {
             handler.close();

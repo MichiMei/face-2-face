@@ -1,6 +1,6 @@
-package datagrams.messages;
+package huberlin.p2projekt21.datagrams.messages;
 
-import datagrams.helpers.MessageConstants;
+import huberlin.p2projekt21.datagrams.helpers.MessageConstants;
 
 import java.util.Arrays;
 

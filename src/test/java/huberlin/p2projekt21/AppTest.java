@@ -3,24 +3,11 @@ package huberlin.p2projekt21;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-import datagrams.messages.GenericMessage;
-import huberlin.p2projekt21.kademlia.KademliaInstance;
-import org.junit.Assert;
+import huberlin.p2projekt21.datagrams.messages.GenericMessage;
 import org.junit.Test;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.math.BigInteger;
-import java.util.Arrays;
-import java.util.concurrent.ThreadLocalRandom;
-import java.net.InetAddress;
-import java.net.DatagramPacket;
-
-import datagrams.messages.*;
-import datagrams.helpers.*;
 
 import java.math.BigInteger;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 
 /**
  * Unit test for simple App.

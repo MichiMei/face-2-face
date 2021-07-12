@@ -1,7 +1,9 @@
 package huberlin.p2projekt21.kademlia;
 
-import datagrams.helpers.MessageConstants;
-import datagrams.messages.*;
+import huberlin.p2projekt21.datagrams.helpers.MessageConstants;
+import huberlin.p2projekt21.datagrams.messages.*;
+import huberlin.p2projekt21.Helper;
+import huberlin.p2projekt21.crypto.Crypto;
 
 import java.math.BigInteger;
 import java.net.DatagramPacket;
@@ -14,9 +16,9 @@ import java.util.stream.Collectors;
 
 public class KademliaInstance implements Runnable{
 
-    public static final int NODE_ID_LENGTH = 255;   // TODO set 256; quickfix for too short kademliaID
-    //public static final int NODE_ID_LENGTH = 63;   // for testing
-    public static final int RANDOM_ID_LENGTH = 159; // TODO set 160; quickfix for wrong randomID
+    public static final int NODE_ID_LENGTH = 256;
+    //public static final int NODE_ID_LENGTH = 64;   // for testing
+    public static final int RANDOM_ID_LENGTH = 160;
     public static final int K = 20;
     //public static final int K = 10; // for testing
     public static final int ALPHA = 3;
@@ -36,7 +38,7 @@ public class KademliaInstance implements Runnable{
     private final AtomicBoolean running;
     private final Thread mainThread;
     private final Logger logger;
-    private BackgroundTasks backgroundTasks;
+    private BackgroundTasks backgroundTasks = null;
     private final LocalHashTable localHashTable;
 
     private final KBuckets kBuckets;
@@ -44,6 +46,8 @@ public class KademliaInstance implements Runnable{
     private final Map<BigInteger, RequestCookie> requestMap;
     // holds BlockingQueues to allow for transferring incoming lookup responses to the correct lookup request
     private final Map<Long, BlockingQueue<GenericMessage>> lookupChannels;
+    // remembers own data, used for regular republish
+    private final Map<BigInteger, Long> ownData;
 
     /**
      * Create a new Kademlia instance
@@ -66,6 +70,7 @@ public class KademliaInstance implements Runnable{
         kBuckets = new KBuckets(K, NODE_ID_LENGTH, ownID);
         requestMap = new ConcurrentHashMap<>();
         lookupChannels = new ConcurrentHashMap<>();
+        ownData = new ConcurrentHashMap<>();
     }
 
     @Override
@@ -86,16 +91,6 @@ public class KademliaInstance implements Runnable{
 
             // decode incoming message
             try {
-                //System.out.println(Arrays.toString(datagram.getData()));
-
-                // TODO remove; quickfix for datagram to long for parser
-                var data = datagram.getData();
-                int end = data.length;
-                while (end > 0 && data[end-1] == 0) end--;
-                var newData = Arrays.copyOf(data, end);
-                datagram.setData(newData);
-                // TODO remove end
-
                 GenericMessage msg = new GenericMessage();
                 msg.fromDatagramPacket(datagram);
                 logger.info("message received\n" + msg.getRandomID().toString());
@@ -107,7 +102,7 @@ public class KademliaInstance implements Runnable{
                 if (node != null) {
                     GenericMessage ping = new GenericMessage(null, -1, node.getAddress(), node.getPort());
                     ping.setSenderNodeID(ownID);
-                    BigInteger randomId = getRandomID();
+                    BigInteger randomId = Helper.getRandomID();
                     requestMap.put(randomId, new RequestCookie(node.getId(), System.currentTimeMillis(), -1));
                     ping.setRandomID(randomId);
                     ping.setTypeHeader(MessageConstants.TYPE_PING);
@@ -164,10 +159,10 @@ public class KademliaInstance implements Runnable{
                 // parse payload
                 EntryKey payload = (EntryKey) msg.getPayload();
                 if (payload == null) return false;
-                BigInteger key = payload.getEntryKey();
+                //BigInteger key = payload.getEntryKey();
                 byte[] value = payload.getEntryValue();
                 // store <key, value>
-                localHashTable.store(key, value);
+                localHashTable.store(new Data(value));
             }
             // TODO Store reply missing? probably not even necessary
             case MessageConstants.TYPE_FINDNODE -> {
@@ -265,7 +260,7 @@ public class KademliaInstance implements Runnable{
     public void stop() {
         logger.info("stopping kademlia");
         this.running.set(false);
-        backgroundTasks.stop();
+        if (backgroundTasks != null) backgroundTasks.stop();
     }
 
     /**
@@ -279,10 +274,37 @@ public class KademliaInstance implements Runnable{
      * @return data associated with the key (or null)
      * @throws Exception thrown by GenericMessage
      */
+    @Deprecated
     public byte[] getValue(BigInteger key) throws Exception {
         logger.info("getValue(" + key.toString(16) + ")");
         // search locally
-        byte[] value = localHashTable.load(key);
+        byte[] value = localHashTable.load(key).getPage().toBytes();
+        if (value == null) {
+            // not found locally -> search in network
+            logger.info("search in network");
+            Data tmp = valueLookup(key);
+            if (tmp != null) value = tmp.getPage().toBytes();
+        } else {
+            logger.info("found locally");
+        }
+        return value;
+    }
+
+    /**
+     * Get the associated value for the given key
+     * null is returned if no value could be found
+     *
+     * !!!WARNING: Will block for possibly a really long time!!!
+     * !!!only call from asynchronous context!!!
+     *
+     * @param key search key
+     * @return data associated with the key (or null)
+     * @throws Exception thrown by GenericMessage
+     */
+    public Data getValueData(BigInteger key) throws Exception {
+        logger.info("getValue(" + key.toString(16) + ")");
+        // search locally
+        Data value = localHashTable.load(key);
         if (value == null) {
             // not found locally -> search in network
             logger.info("search in network");
@@ -304,10 +326,11 @@ public class KademliaInstance implements Runnable{
      * @return true if stored in network, false if only stored locally
      * @throws Exception thrown by GenericMessage
      */
+    @Deprecated
     public boolean store(BigInteger key, byte[] value) throws Exception {
         logger.info("store(" + key.toString(16) + ")");
         // store locally
-        localHashTable.store(key, value);
+        localHashTable.store(new Data(value, null, null, System.currentTimeMillis()));
         // store in network
         List<KademliaNode> nodes = nodeLookup(key);
         if (nodes == null || nodes.size() == 0) {
@@ -317,11 +340,71 @@ public class KademliaInstance implements Runnable{
         for (var node : nodes) {
             GenericMessage store = new GenericMessage(null, -1, node.getAddress(), node.getPort());
             store.setTypeHeader(MessageConstants.TYPE_STORE_ENTRYKEY);
-            BigInteger randomID = getRandomID();
+            BigInteger randomID = Helper.getRandomID();
             store.setRandomID(randomID);
             store.setSenderNodeID(ownID);
             EntryKey payload = new EntryKey(key);
             payload.setEntryValue(value);
+            store.setPayload(payload);
+            // TODO uncomment if storeR is added
+            // requestMap.put(randomID, new RequestCookie(node.getId(), System.currentTimeMillis(), -1));
+            outgoingChannel.add(store.toDatagram());
+            logger.info("send store to " + node.getId().toString(16));
+        }
+        return true;
+    }
+
+    /**
+     * Store the given key-value pair
+     *
+     * !!!WARNING: Will block for possibly a really long time!!!
+     * !!!only call from asynchronous context!!!
+     *
+     * @param data Data object containing data, signature and key to be stores
+     * @return true if stored in network, false if only stored locally
+     * @throws Exception thrown by GenericMessage
+     */
+    public boolean store(Data data) throws Exception {
+        logger.info("store(" + data.getKeyHash().toString(16) + ")");
+        // store locally
+        localHashTable.store(data);
+
+        // store in network
+        boolean success = publishData(data);
+        if (success) {
+            // stored successfully -> mark published (with current time)
+            ownData.put(data.getKeyHash(), System.currentTimeMillis());
+        } else {
+            // store failed -> mark unpublished
+            ownData.put(data.getKeyHash(), (long)-1);
+        }
+        return success;
+    }
+
+    /**
+     * Tries to publish the given Data object in the Kademlia network
+     *
+     * !!!WARNING: Will block for possibly a really long time!!!
+     * !!!only call from asynchronous context!!!
+     *
+     * @param data Data object containing data, signature and key to be published
+     * @return true if successfully stored in network, false otherwise
+     * @throws Exception thrown by GenericMessage
+     */
+    private boolean publishData(Data data) throws Exception {
+        List<KademliaNode> nodes = nodeLookup(data.getKeyHash());
+        if (nodes == null || nodes.size() == 0) {
+            logger.warning("Could not store message in the network");
+            return false;
+        }
+        for (var node : nodes) {
+            GenericMessage store = new GenericMessage(null, -1, node.getAddress(), node.getPort());
+            store.setTypeHeader(MessageConstants.TYPE_STORE_ENTRYKEY);
+            BigInteger randomID = Helper.getRandomID();
+            store.setRandomID(randomID);
+            store.setSenderNodeID(ownID);
+            EntryKey payload = new EntryKey(data.getKeyHash());
+            payload.setEntryValue(data.toBytes());
             store.setPayload(payload);
             // TODO uncomment if storeR is added
             // requestMap.put(randomID, new RequestCookie(node.getId(), System.currentTimeMillis(), -1));
@@ -348,7 +431,7 @@ public class KademliaInstance implements Runnable{
             logger.info("starting main thread");
             this.running.set(true);
             this.mainThread.start();
-            backgroundTasks = new BackgroundTasks(kBuckets, requestMap, this::nodeLookup, ownID);
+            backgroundTasks = new BackgroundTasks(kBuckets, requestMap, this::nodeLookup, ownID, outgoingChannel, this::publishData, ownData);
             return;
         }
         logger.info("start bootstrapping");
@@ -365,7 +448,7 @@ public class KademliaInstance implements Runnable{
                         logger.info("starting main thread");
                         this.running.set(true);
                         this.mainThread.start();
-                        backgroundTasks = new BackgroundTasks(kBuckets, requestMap, this::nodeLookup, ownID);
+                        backgroundTasks = new BackgroundTasks(kBuckets, requestMap, this::nodeLookup, ownID, outgoingChannel, this::publishData, ownData);
                         nodeLookup(ownID);
                         logger.info("bootstrapping finished");
                         break;
@@ -393,7 +476,7 @@ public class KademliaInstance implements Runnable{
         GenericMessage ping = new GenericMessage(null, -1, address, port);
         // send Ping to bootstrapping address (to get first kademlia id)
         ping.setSenderNodeID(ownID);
-        BigInteger randomId = getRandomID();
+        BigInteger randomId = Helper.getRandomID();
         ping.setRandomID(randomId);
         ping.setTypeHeader(MessageConstants.TYPE_PING);
         outgoingChannel.add(ping.toDatagram());
@@ -481,7 +564,7 @@ public class KademliaInstance implements Runnable{
                 if (next.getValue() == 0) {
                     GenericMessage findNode = new GenericMessage(null, -1, next.getKey().getAddress(), next.getKey().getPort());
                     findNode.setTypeHeader(MessageConstants.TYPE_FINDNODE);
-                    BigInteger randomID = getRandomID();
+                    BigInteger randomID = Helper.getRandomID();
                     findNode.setRandomID(randomID);
                     findNode.setSenderNodeID(ownID);
                     NodeID nodeID = new NodeID(id);
@@ -523,8 +606,8 @@ public class KademliaInstance implements Runnable{
 
                 for (KademliaNode node : nodeList) {
                     if (node.getId().equals(ownID)) continue;   // skip own id
-                    // add to kBucket
-                    kBuckets.update(node, 0);
+                    // send ping -> node is only added, if it answers
+                    sendPing(node);
                     // add to closest (if not present)
                     closest.putIfAbsent(node, (long) 0);
                     logger.info("added to closest: " + node.getId().toString(16));
@@ -573,13 +656,14 @@ public class KademliaInstance implements Runnable{
     /**
      * Find value for the specified key
      * cf. 2.2 Kademlia protocol
+     *
      * !!!WARNING: Will block for possibly a really long time!!!
      * !!!only call from asynchronous context!!!
      *
      * @param key (hash)key of the desired value
      * @return value for that key (or null if not found)
      */
-    private byte[] valueLookup(BigInteger key) throws Exception {
+    private Data valueLookup(BigInteger key) throws Exception {
         logger.info("valueLookup(" + key.toString(16) + ")");
         kBuckets.nodeLookupPerformed(key);
         // create lookup id (to be able to forward incoming replies to the correct node-/valueLookup
@@ -599,7 +683,7 @@ public class KademliaInstance implements Runnable{
         }
         for (var elem : tmp) closest.put(elem, (long) 0);
 
-        byte[] value = null;
+        Data currentData = null;
 
         // recursive until closest k nodes responded:
         while (true) {
@@ -611,7 +695,7 @@ public class KademliaInstance implements Runnable{
                 if (next.getValue() == 0) {
                     GenericMessage findValue = new GenericMessage(null, -1, next.getKey().getAddress(), next.getKey().getPort());
                     findValue.setTypeHeader(MessageConstants.TYPE_FINDVALUE);
-                    BigInteger randomID = getRandomID();
+                    BigInteger randomID = Helper.getRandomID();
                     findValue.setRandomID(randomID);
                     findValue.setSenderNodeID(ownID);
                     NodeID nodeID = new NodeID(key);
@@ -655,8 +739,8 @@ public class KademliaInstance implements Runnable{
 
                         for (KademliaNode node : nodeList) {
                             if (node.getId().equals(ownID)) continue;   // skip own id
-                            // add to kBucket
-                            kBuckets.update(node, 0);
+                            // send ping -> node is only added, if it answers
+                            sendPing(node);
                             // add to closest (if not present)
                             closest.putIfAbsent(node, (long) 0);
                             logger.info("added to closest: " + node.getId().toString(16));
@@ -665,11 +749,19 @@ public class KademliaInstance implements Runnable{
                     case MessageConstants.TYPE_FINDVALUE_R -> {
                         EntryValue entryValue = (EntryValue) next.getPayload();
                         byte[] tmpValue = entryValue.getEntryValue();
-                        // TODO compare date -> only override if newer
-                        if (value == null /* || tmpValue newer than value*/) {
-                            value = tmpValue;
-                            // TODO remove return (newer values could exist)
-                            return value;
+                        if (tmpValue != null) {
+                            // deserialize newData
+                            Data newData = new Data(tmpValue);
+                            // check signature
+                            if (Crypto.verify(newData.getPage().toBytes(), newData.getSignature(), Helper.getPublicKeyFromBytes(newData.getPublicKey()))) {
+                                // check correct key
+                                if (newData.getKeyHash().equals(key)) {
+                                    // check if newer
+                                    if (currentData == null || currentData.compareDate(newData) < 0) {
+                                        currentData = newData;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -710,16 +802,27 @@ public class KademliaInstance implements Runnable{
 
         kBuckets.nodeLookupPerformed(key);
         lookupChannels.remove(lookupId);
-        // return found value (or null if non found)
-        return value;
+        return currentData;
     }
 
     /**
-     * Generate new RandomID
-     * @return new RandomID
+     * Sends a ping request to the specified node
+     * @param node specified node
      */
-    private BigInteger getRandomID() {
-        return new BigInteger(RANDOM_ID_LENGTH, random);
+    private void sendPing(KademliaNode node) {
+        try {
+            GenericMessage ping = new GenericMessage(null, -1, node.getAddress(), node.getPort());
+            ping.setTypeHeader(MessageConstants.TYPE_PING);
+            BigInteger randomID = Helper.getRandomID();
+            ping.setRandomID(randomID);
+            ping.setSenderNodeID(ownID);
+            // register message for own lookupChannel
+            requestMap.put(randomID, new KademliaInstance.RequestCookie(node.getId(), System.currentTimeMillis(),
+                    -1));
+            outgoingChannel.add(ping.toDatagram());
+        } catch (Exception e) {
+            logger.warning("send ping failed\n" + e.getMessage());
+        }
     }
 
     /**
@@ -750,7 +853,7 @@ public class KademliaInstance implements Runnable{
         NodeID payloadReq = (NodeID) request.getPayload();
         if (payloadReq == null) return null;
 
-        byte[] value = localHashTable.load(payloadReq.getNodeID());
+        Data value = localHashTable.load(payloadReq.getNodeID());
         GenericMessage reply = new GenericMessage(null, -1, request.getSenderIP(), request.getSenderPort());
         reply.setRandomID(request.getRandomID());
         reply.setSenderNodeID(ownID);
@@ -764,7 +867,7 @@ public class KademliaInstance implements Runnable{
         } else {                // value available      -> FindValueR
             logger.info("value available -> answer findValueR");
             reply.setTypeHeader(MessageConstants.TYPE_FINDVALUE_R);
-            EntryValue payloadRes = new EntryValue(true, value);
+            EntryValue payloadRes = new EntryValue(true, value.toBytes());
             reply.setPayload(payloadRes);
         }
         return reply;
