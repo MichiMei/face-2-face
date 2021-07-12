@@ -31,9 +31,7 @@ public class BackgroundTasks{
     public static boolean ACTIVATE_PING            = true;
     public static boolean ACTIVATE_REPUBLISH       = true;
 
-    // TODO implement regular-republish
-
-    private final BGT_UnansweredRequests unansweredRequests;
+    private BGT_UnansweredRequests unansweredRequests = null;
     private BGT_KBucketLookup kBucketLookup = null;
     private BGT_RegularPing regularPing = null;
     private BGT_RegularRepublish regularRepublish = null;
@@ -55,7 +53,7 @@ public class BackgroundTasks{
      * Eventually stop the BG-tasks
      */
     public void stop() {
-        unansweredRequests.stop();
+        if (unansweredRequests != null) unansweredRequests.stop();
         if (kBucketLookup != null)      kBucketLookup.stop();
         if (regularPing != null)        regularPing.stop();
         if (regularRepublish != null)   regularRepublish.stop();

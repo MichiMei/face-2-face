@@ -38,7 +38,7 @@ public class KademliaInstance implements Runnable{
     private final AtomicBoolean running;
     private final Thread mainThread;
     private final Logger logger;
-    private BackgroundTasks backgroundTasks;
+    private BackgroundTasks backgroundTasks = null;
     private final LocalHashTable localHashTable;
 
     private final KBuckets kBuckets;
@@ -260,7 +260,7 @@ public class KademliaInstance implements Runnable{
     public void stop() {
         logger.info("stopping kademlia");
         this.running.set(false);
-        backgroundTasks.stop();
+        if (backgroundTasks != null) backgroundTasks.stop();
     }
 
     /**

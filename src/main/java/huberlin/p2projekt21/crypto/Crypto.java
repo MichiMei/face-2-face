@@ -96,6 +96,10 @@ public class Crypto {
             generator.initialize(Integer.parseInt(keySize), new SecureRandom());
             KeyPair pair = generator.generateKeyPair();
 
+            if (Files.notExists(privateKeyFile.getParent())) {
+                Files.createDirectories(privateKeyFile.getParent());
+            }
+
             Files.createFile(privateKeyFile);
             Files.createFile(publicKeyFile);
             Files.write(privateKeyFile, pair.getPrivate().getEncoded());
