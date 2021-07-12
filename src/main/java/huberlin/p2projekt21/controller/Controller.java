@@ -1,5 +1,6 @@
 package huberlin.p2projekt21.controller;
 
+import huberlin.p2projekt21.Helper;
 import huberlin.p2projekt21.crypto.Crypto;
 import huberlin.p2projekt21.gui.MainGui;
 import huberlin.p2projekt21.gui.StartDialog;
@@ -29,7 +30,6 @@ import java.util.logging.Logger;
 
 public class Controller {
 
-    public static final boolean ENABLE_GUI          =   true;
     public static final boolean ENABLE_FILE_LOGGING =   true;
 
     private DatagramChannel socket;
@@ -47,29 +47,35 @@ public class Controller {
     /**
      * start program
      *
-     * @param args args[0]==ownPort, -1 or empty for arbitrary port
-     *             args[1]==bootstrapping ip, empty for skip
-     *             args[2]==bootstrapping port, empty for skip
+     * @param args args[0]==type, 0=gui, 1=dummy, 2=publish-dummy;
+     *             args[1]==ownPort, -1 or empty for arbitrary port;
+     *             args[2]==bootstrapping ip, empty for skip;
+     *             args[3]==bootstrapping port, empty for skip;
      * @throws IOException .
      */
     public static void main(String[] args) throws Exception {
-        // read own port and bootstrapping address from parameters
-        int ownPort = -1;
+        // read parameters
+        int type = 0;                   // default type: gui
+        int ownPort = -1;               // default ownPort: arbitrary
+        InetAddress btAddress = null;   // default bootstrapping address: skip
+        int btPort = -1;                // default bootstrapping address: skip
         if (args.length >= 1) {
-            ownPort = Integer.parseInt(args[0]);
-            if (ownPort < 0 || ownPort > 65535) {
-                ownPort = -1;
-            }
+            type = Integer.parseInt(args[0]);
+            if (type < 0 || type > 2)   type = 0;
         }
-        InetAddress btAddress = null;
-        int btPort = -1;
-        if (args.length >= 3) {
-            btAddress = InetAddress.getByName(args[1]);
-            btPort = Integer.parseInt(args[2]);
+        if (args.length >= 2) {
+            ownPort = Integer.parseInt(args[1]);
+            if (ownPort < 0 || ownPort > 65535) ownPort = -1;
+        }
+        if (args.length >= 4) {
+            btAddress = InetAddress.getByName(args[2]);
+            btPort = Integer.parseInt(args[3]);
         }
 
+        //ownPort = 30006;
+
         // GUI ask for port and bootstrapping
-        if (ENABLE_GUI) {
+        if (type == 0) {
             StartDialog startDialog = new StartDialog(ownPort, btAddress, btPort);
             var res = startDialog.display();
             if (res == null) {
@@ -84,9 +90,11 @@ public class Controller {
         // create controller
         Controller controller = new Controller(ownPort, btAddress, btPort);
 
-        // start gui or manual controller
-        if (ENABLE_GUI) controller.guiController();
-        else            controller.manualController();
+        switch (type) {
+            case 0 -> controller.guiController();           // start gui or manual controller
+            case 1 -> controller.dummyController();         // start dummy-node
+            case 2 -> controller.dummyPublishController();  // start dummy-publish-node
+        }
     }
 
     /**
@@ -94,6 +102,7 @@ public class Controller {
      *
      * @throws Exception .
      */
+    @Deprecated
     private void manualController() throws Exception {
         // initialize
         init();
@@ -162,19 +171,74 @@ public class Controller {
     /**
      * Initializes the controller and starts the GUI
      *
+     * This is the main controller for users
+     *
      * @throws Exception .
      */
     private void guiController() throws Exception {
         init();
         MainGui gui = new MainGui(this, ownPublicKey);
+
+        // load own page locally and in the network and restore
         byte[][] stored = Storage.read(ownPublicKey.getEncoded());
+        Data networkData = kademlia.getValueData(Helper.bigIntHashForKey(ownPublicKey));
+        Data newest;
         if (stored == null) {
-            gui.setOwnPage(null);
+            // own page not stored locally
+            // restore network version
+            newest = networkData;
         } else {
-            Data data = new Data(stored);
-            gui.setOwnPage(data.getPage());
-            // TODO search in network and compare date
+            Data localData = new Data(stored);
+            // stored locally
+            if (networkData == null) {
+                // not stored in network -> restore local version
+                newest = localData;
+            } else {
+                // both found -> use newer version
+                if (localData.compareDate(networkData) < 0) {
+                    // network version is newer
+                    newest = networkData;
+                } else {
+                    // local version is newer
+                    newest = localData;
+                }
+            }
         }
+        if (newest != null) {
+            gui.setOwnPage(newest.getPage());
+        } else {
+            gui.setOwnPage(null);
+        }
+
+        // initial publish own data
+        if (newest != null) {
+            kademlia.store(newest);
+        }
+    }
+
+    /**
+     * Initializes the controller
+     *
+     * This controller is for testing
+     * It participates in the network but can't publish
+     *
+     * @throws Exception .
+     */
+    private void dummyController() throws Exception {
+        init();
+    }
+
+    /**
+     * Initializes the controller
+     *
+     * This controller is for testing
+     * It participates in the network and will publish (and republish) a number of default pages
+     *
+     * @throws Exception .
+     */
+    private void dummyPublishController() throws Exception {
+        init();
+        // TODO publish given data
     }
 
     /**
@@ -237,7 +301,7 @@ public class Controller {
      * @param btAddress bootstrapping address, empty for new network
      * @param btPort    bootstrapping port, empty for new network
      */
-    private Controller(int ownPort, InetAddress btAddress, int btPort) {
+    private Controller(int ownPort, InetAddress btAddress, int btPort) throws IOException, NoSuchAlgorithmException {
         if (ownPort >= 0 && ownPort <= 65535) {
             own = new InetSocketAddress(ownPort);
         } else {
@@ -248,6 +312,7 @@ public class Controller {
             port = btPort;
         else
             port = -1;
+        Crypto.createPair();
     }
 
     /**
@@ -291,20 +356,6 @@ public class Controller {
 
         this.kademlia = new KademliaInstance(receiverChannel, senderChannel);
         this.kademlia.start(ip, port);
-
-        // initial publish
-        new Thread(() -> {
-            try {
-                byte[][] tmp = Storage.read(ownPublicKey.getEncoded());
-                if (tmp != null) {
-                    Data data = new Data(tmp);
-                    kademlia.store(data);
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-
-        }).start();
     }
 
     /**

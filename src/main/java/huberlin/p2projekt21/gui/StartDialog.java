@@ -27,8 +27,11 @@ public class StartDialog extends JDialog {
 
         if (defOwnPort >= 0 && defOwnPort <= 65535)
             ownPortTextField.setText("" + defOwnPort);
-        if (defBootstrappingAddress != null)
-            bootstrappingAddressTextField.setText(defBootstrappingAddress.toString());
+        if (defBootstrappingAddress != null) {
+            String address = defBootstrappingAddress.toString();
+            if (address.startsWith("/")) address = address.substring(1);
+            bootstrappingAddressTextField.setText(address);
+        }
         if (defBootstrappingPort >= 0 && defBootstrappingPort <= 65535)
             bootstrappingPortTextField.setText("" + defBootstrappingPort);
 

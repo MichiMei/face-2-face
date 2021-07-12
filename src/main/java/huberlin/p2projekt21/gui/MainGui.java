@@ -174,7 +174,17 @@ public class MainGui extends JFrame {
         htmlPreviewTextArea.setText(content);
     }
 
+
     private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
+    /**
+     * Transforms byte array into hex string
+     *
+     * Source: maybeWeCouldStealAVan,
+     * https://stackoverflow.com/questions/9655181/how-to-convert-a-byte-array-to-a-hex-string-in-java
+     *
+     * @param bytes byte array
+     * @return Hex-string representation
+     */
     private static String bytesToHex(byte[] bytes) {
         char[] hexChars = new char[bytes.length * 2];
         for (int j = 0; j < bytes.length; j++) {

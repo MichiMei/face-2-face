@@ -37,6 +37,9 @@ public class Storage {
         String SIGNATURE_FILE_NAME_TEMPLATE = PropertiesSingleton.getInstance().get("SIGNATURE_FILE_NAME_TEMPLATE");
         String KEY_FILE_NAME_TEMPLATE = PropertiesSingleton.getInstance().get("KEY_FILE_NAME_TEMPLATE");
 
+        Path dataDirP = Paths.get(DATA_PATH);
+        if (!Files.exists(dataDirP)) Files.createDirectory(dataDirP);
+
         Path dataP = Paths.get(DATA_PATH + DATA_FILE_NAME_TEMPLATE.replace("ID", Integer.toString(keyHash)));
         Path sigP = Paths.get(DATA_PATH + SIGNATURE_FILE_NAME_TEMPLATE.replace("ID", Integer.toString(keyHash)));
         Path keyP = Paths.get(DATA_PATH + KEY_FILE_NAME_TEMPLATE.replace("ID", Integer.toString(keyHash)));

@@ -3,6 +3,7 @@ package huberlin.p2projekt21.kademlia;
 import datagrams.helpers.MessageConstants;
 import datagrams.messages.*;
 import huberlin.p2projekt21.Helper;
+import huberlin.p2projekt21.crypto.Crypto;
 
 import java.math.BigInteger;
 import java.net.DatagramPacket;
@@ -12,9 +13,6 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
-
-// TODO on startup load own data and republish
-// TODO regularly republish own data
 
 public class KademliaInstance implements Runnable{
 
@@ -608,8 +606,8 @@ public class KademliaInstance implements Runnable{
 
                 for (KademliaNode node : nodeList) {
                     if (node.getId().equals(ownID)) continue;   // skip own id
-                    // add to kBucket
-                    kBuckets.update(node, 0);
+                    // send ping -> node is only added, if it answers
+                    sendPing(node);
                     // add to closest (if not present)
                     closest.putIfAbsent(node, (long) 0);
                     logger.info("added to closest: " + node.getId().toString(16));
@@ -685,7 +683,7 @@ public class KademliaInstance implements Runnable{
         }
         for (var elem : tmp) closest.put(elem, (long) 0);
 
-        byte[] value = null;
+        Data currentData = null;
 
         // recursive until closest k nodes responded:
         while (true) {
@@ -741,8 +739,8 @@ public class KademliaInstance implements Runnable{
 
                         for (KademliaNode node : nodeList) {
                             if (node.getId().equals(ownID)) continue;   // skip own id
-                            // add to kBucket
-                            kBuckets.update(node, 0);
+                            // send ping -> node is only added, if it answers
+                            sendPing(node);
                             // add to closest (if not present)
                             closest.putIfAbsent(node, (long) 0);
                             logger.info("added to closest: " + node.getId().toString(16));
@@ -751,11 +749,19 @@ public class KademliaInstance implements Runnable{
                     case MessageConstants.TYPE_FINDVALUE_R -> {
                         EntryValue entryValue = (EntryValue) next.getPayload();
                         byte[] tmpValue = entryValue.getEntryValue();
-                        // TODO compare date -> only override if newer
-                        if (value == null /* || tmpValue newer than value*/) {
-                            value = tmpValue;
-                            // TODO remove return (newer values could exist)
-                            return new Data(value);
+                        if (tmpValue != null) {
+                            // deserialize newData
+                            Data newData = new Data(tmpValue);
+                            // check signature
+                            if (Crypto.verify(newData.getPage().toBytes(), newData.getSignature(), Helper.getPublicKeyFromBytes(newData.getPublicKey()))) {
+                                // check correct key
+                                if (newData.getKeyHash().equals(key)) {
+                                    // check if newer
+                                    if (currentData == null || currentData.compareDate(newData) < 0) {
+                                        currentData = newData;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -796,12 +802,28 @@ public class KademliaInstance implements Runnable{
 
         kBuckets.nodeLookupPerformed(key);
         lookupChannels.remove(lookupId);
-        // return found value (or null if non found)
-        if (value == null) return null;
-        return new Data(value);
+        return currentData;
     }
 
-
+    /**
+     * Sends a ping request to the specified node
+     * @param node specified node
+     */
+    private void sendPing(KademliaNode node) {
+        try {
+            GenericMessage ping = new GenericMessage(null, -1, node.getAddress(), node.getPort());
+            ping.setTypeHeader(MessageConstants.TYPE_PING);
+            BigInteger randomID = Helper.getRandomID();
+            ping.setRandomID(randomID);
+            ping.setSenderNodeID(ownID);
+            // register message for own lookupChannel
+            requestMap.put(randomID, new KademliaInstance.RequestCookie(node.getId(), System.currentTimeMillis(),
+                    -1));
+            outgoingChannel.add(ping.toDatagram());
+        } catch (Exception e) {
+            logger.warning("send ping failed\n" + e.getMessage());
+        }
+    }
 
     /**
      * Checks if the reply answers a prior request
