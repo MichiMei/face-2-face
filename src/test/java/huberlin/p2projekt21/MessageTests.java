@@ -1,13 +1,11 @@
 package huberlin.p2projekt21;
-import datagrams.helpers.MessageConstants;
-import datagrams.messages.*;
+import huberlin.p2projekt21.datagrams.helpers.MessageConstants;
+import huberlin.p2projekt21.datagrams.messages.*;
 
 
-import javax.xml.crypto.Data;
 import java.math.BigInteger;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
-import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 

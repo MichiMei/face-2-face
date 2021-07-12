@@ -1,6 +1,6 @@
-package datagrams.helpers;
+package huberlin.p2projekt21.datagrams.helpers;
 
-import datagrams.messages.*;
+import huberlin.p2projekt21.datagrams.messages.*;
 
 public class PayloadConverter {
     public static IPayload convertFromBytestream(byte[] bytesIn, byte type){

@@ -23,14 +23,16 @@ import java.security.*;
 import java.security.spec.X509EncodedKeySpec;
 import java.sql.Timestamp;
 import java.util.Date;
+import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.logging.FileHandler;
 import java.util.logging.Handler;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 public class Controller {
 
-    public static final boolean ENABLE_FILE_LOGGING =   true;
+    public static final boolean ENABLE_FILE_LOGGING = false;
 
     private DatagramChannel socket;
     private Sender sender;
@@ -49,8 +51,9 @@ public class Controller {
      *
      * @param args args[0]==type, 0=gui, 1=dummy, 2=publish-dummy;
      *             args[1]==ownPort, -1 or empty for arbitrary port;
-     *             args[2]==bootstrapping ip, empty for skip;
-     *             args[3]==bootstrapping port, empty for skip;
+     *             args[2]==bootstrapping ip, empty or -1 for skip;
+     *             args[3]==bootstrapping port, empty or -1 for skip;
+     *             args[4]==path of directory with default pages, only for type==2;
      * @throws IOException .
      */
     public static void main(String[] args) throws Exception {
@@ -59,6 +62,7 @@ public class Controller {
         int ownPort = -1;               // default ownPort: arbitrary
         InetAddress btAddress = null;   // default bootstrapping address: skip
         int btPort = -1;                // default bootstrapping address: skip
+        String defaultPagesDir = null;  // none
         if (args.length >= 1) {
             type = Integer.parseInt(args[0]);
             if (type < 0 || type > 2)   type = 0;
@@ -67,9 +71,12 @@ public class Controller {
             ownPort = Integer.parseInt(args[1]);
             if (ownPort < 0 || ownPort > 65535) ownPort = -1;
         }
-        if (args.length >= 4) {
+        if (args.length >= 4 && !args[2].equals("-1") && !args[3].equals("-1")) {
             btAddress = InetAddress.getByName(args[2]);
             btPort = Integer.parseInt(args[3]);
+        }
+        if (args.length >= 5) {
+            defaultPagesDir = args[4];
         }
 
         //ownPort = 30006;
@@ -91,9 +98,9 @@ public class Controller {
         Controller controller = new Controller(ownPort, btAddress, btPort);
 
         switch (type) {
-            case 0 -> controller.guiController();           // start gui or manual controller
-            case 1 -> controller.dummyController();         // start dummy-node
-            case 2 -> controller.dummyPublishController();  // start dummy-publish-node
+            case 0 -> controller.guiController();                           // start gui or manual controller
+            case 1 -> controller.dummyController();                         // start dummy-node
+            case 2 -> controller.dummyPublishController(defaultPagesDir);   // start dummy-publish-node
         }
     }
 
@@ -236,11 +243,39 @@ public class Controller {
      * This controller is for testing
      * It participates in the network and will publish (and republish) a number of default pages
      *
+     * @param inputPath String-path of the directory containing the default pages
      * @throws Exception .
      */
-    private void dummyPublishController() throws Exception {
+    private void dummyPublishController(String inputPath) throws Exception {
         init();
-        // TODO publish given data
+
+        // publish provided default pages
+        String defaultPagesDir = "default_pages";
+        if (inputPath != null) defaultPagesDir = inputPath;
+        Path dir = Paths.get(defaultPagesDir);
+        if (Files.notExists(dir)) {
+            System.err.println("default page folder does not exist");
+            System.err.println(defaultPagesDir);
+            System.err.println("shutting down");
+            System.exit(-1);
+        }
+        Thread.sleep(5*1000);   // wait 5 seconds until network is created
+
+        List<Path> keys = Files.walk(dir)
+                .filter(Files::isRegularFile)
+                .filter(path -> path.getFileName().toString().endsWith(".pub"))
+                .collect(Collectors.toList());
+
+        for (Path key : keys) {
+            byte[] keyBytes = Files.readAllBytes(key);
+            byte[][] data = Storage.read(keyBytes);
+            if (data == null) {
+                Logger.getGlobal().warning("could not read file " + key.toString());
+                continue;
+            }
+            Data tmp = new Data(data);
+            kademlia.store(tmp);
+        }
     }
 
     /**

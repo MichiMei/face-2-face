@@ -1,11 +1,10 @@
-package datagrams.messages;
-import datagrams.helpers.MessageConstants;
-import datagrams.helpers.PayloadConverter;
+package huberlin.p2projekt21.datagrams.messages;
+import huberlin.p2projekt21.datagrams.helpers.MessageConstants;
+import huberlin.p2projekt21.datagrams.helpers.PayloadConverter;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
-import java.util.Arrays;
 import java.util.concurrent.ThreadLocalRandom;
 import java.net.InetAddress;
 import java.net.DatagramPacket;

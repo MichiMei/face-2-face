@@ -53,7 +53,7 @@
           <configuration>
             <archive>
               <manifest>
-                <mainClass>huberlin.p2projekt21.App</mainClass>
+                <mainClass>huberlin.p2projekt21.controller.Controller</mainClass>
               </manifest>
             </archive>
           </configuration>

@@ -35,7 +35,6 @@ public class MainGui extends JFrame {
         this.resources = ResourceBundle.getBundle("StringLiterals");
 
         ownFileTextArea.setEditable(false); // deactivate until own page is loaded
-        htmlPreviewTextArea.setContentType("text/html");
         friendFileTextArea.setContentType("text/html");
 
         ownKeyTextField.setText("<null>");
@@ -88,9 +87,15 @@ public class MainGui extends JFrame {
                         Data.Page page = get();
                         if (page == null) {
                             friendFileTextArea.setText(resources.getString("search_failed"));
+                            friendFileTextArea.setContentType("text/plain");
                             dateTextField.setText("");
                         } else {
                             String content = new String(page.getData());
+                            if (content.toLowerCase().contains("<html>")) {
+                                friendFileTextArea.setContentType("text/html");
+                            } else {
+                                friendFileTextArea.setContentType("text/plain");
+                            }
                             friendFileTextArea.setText(content);
                             DateFormat df = DateFormat.getDateTimeInstance(DateFormat.LONG, DateFormat.SHORT);
                             String formattedDate = df.format(new Date(page.getTimeStamp()));
@@ -171,6 +176,11 @@ public class MainGui extends JFrame {
 
     private void updatePreview() {
         String content = ownFileTextArea.getText();
+        if (content.toLowerCase().contains("<html>")) {
+            htmlPreviewTextArea.setContentType("text/html");
+        } else {
+            htmlPreviewTextArea.setContentType("text/plain");
+        }
         htmlPreviewTextArea.setText(content);
     }
 

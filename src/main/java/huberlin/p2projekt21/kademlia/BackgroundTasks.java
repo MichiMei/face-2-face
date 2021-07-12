@@ -1,7 +1,7 @@
 package huberlin.p2projekt21.kademlia;
 
-import datagrams.helpers.MessageConstants;
-import datagrams.messages.GenericMessage;
+import huberlin.p2projekt21.datagrams.helpers.MessageConstants;
+import huberlin.p2projekt21.datagrams.messages.GenericMessage;
 import huberlin.p2projekt21.Helper;
 import huberlin.p2projekt21.storage.Storage;
 
