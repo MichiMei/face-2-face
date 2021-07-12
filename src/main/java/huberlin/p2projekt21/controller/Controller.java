@@ -176,6 +176,8 @@ public class Controller {
      * @throws Exception .
      */
     private void guiController() throws Exception {
+        Crypto.createPair();
+        ownPublicKey = Crypto.getStoredPublicKey();
         init();
         MainGui gui = new MainGui(this, ownPublicKey);
 
@@ -253,13 +255,15 @@ public class Controller {
      */
     public boolean store(byte[] data) {
         byte[] signature;
+        long timeStamp = System.currentTimeMillis();
+        Data.Page page = new Data.Page(data, timeStamp);
         try {
             // sign data
-            signature = Crypto.signWithStoredKey(data);
+            signature = Crypto.signWithStoredKey(page.toBytes());
             // store locally
-            Storage.storeOwn(data);
+            Storage.storeOwn(page.toBytes());
             // kademlia store
-            Data tmp = new Data(data, signature, ownPublicKey.getEncoded(), System.currentTimeMillis());
+            Data tmp = new Data(data, signature, ownPublicKey.getEncoded(), timeStamp);
             return kademlia.store(tmp);
         } catch (Exception e) {
             e.printStackTrace();
@@ -301,7 +305,7 @@ public class Controller {
      * @param btAddress bootstrapping address, empty for new network
      * @param btPort    bootstrapping port, empty for new network
      */
-    private Controller(int ownPort, InetAddress btAddress, int btPort) throws IOException, NoSuchAlgorithmException {
+    private Controller(int ownPort, InetAddress btAddress, int btPort) {
         if (ownPort >= 0 && ownPort <= 65535) {
             own = new InetSocketAddress(ownPort);
         } else {
@@ -312,7 +316,6 @@ public class Controller {
             port = btPort;
         else
             port = -1;
-        Crypto.createPair();
     }
 
     /**
@@ -337,8 +340,6 @@ public class Controller {
      * @throws Exception .
      */
     private void init() throws Exception {
-        ownPublicKey = Crypto.getStoredPublicKey();
-
         if (ENABLE_FILE_LOGGING) addHandler();  // Log to file
 
         this.socket = DatagramChannel.open().bind(own);

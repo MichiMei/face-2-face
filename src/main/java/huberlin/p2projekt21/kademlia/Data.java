@@ -129,7 +129,7 @@ public class Data {
         return Long.compare(this.page.timeStamp, other.page.timeStamp);
     }
 
-    public class Page {
+    public static class Page {
         final byte[] data;
         final long timeStamp;
 
@@ -203,7 +203,7 @@ public class Data {
         }
     }
 
-    public class DifferentAuthorsException extends Exception {
+    public static class DifferentAuthorsException extends Exception {
         public DifferentAuthorsException(String msg) {
             super(msg);
         }
