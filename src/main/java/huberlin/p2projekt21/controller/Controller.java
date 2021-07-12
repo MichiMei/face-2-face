@@ -1,6 +1,5 @@
 package huberlin.p2projekt21.controller;
 
-import huberlin.p2projekt21.Helper;
 import huberlin.p2projekt21.crypto.Crypto;
 import huberlin.p2projekt21.gui.MainGui;
 import huberlin.p2projekt21.gui.StartDialog;
@@ -167,7 +166,15 @@ public class Controller {
      */
     private void guiController() throws Exception {
         init();
-        new MainGui(this, ownPublicKey);
+        MainGui gui = new MainGui(this, ownPublicKey);
+        byte[][] stored = Storage.read(ownPublicKey.getEncoded());
+        if (stored == null) {
+            gui.setOwnPage(null);
+        } else {
+            Data data = new Data(stored);
+            gui.setOwnPage(data.getPage());
+            // TODO search in network and compare date
+        }
     }
 
     /**
@@ -188,7 +195,7 @@ public class Controller {
             // store locally
             Storage.storeOwn(data);
             // kademlia store
-            Data tmp = new Data(data, signature, ownPublicKey.getEncoded());
+            Data tmp = new Data(data, signature, ownPublicKey.getEncoded(), System.currentTimeMillis());
             return kademlia.store(tmp);
         } catch (Exception e) {
             e.printStackTrace();
@@ -197,22 +204,26 @@ public class Controller {
     }
 
     /**
-     * Loads the data for the specified key
+     * Loads the page for the specified key
      * Loads it from local storage if possible or the network
      *
      * !!!WARNING: Will block for possibly a really long time!!!
      * !!!only call from asynchronous context!!!
      *
      * @param key for the requested data
-     * @return byte representation of the requested data or null if not found
+     * @return requested page (or null)
      */
-    public byte[] load(BigInteger key) {
+    public Data.Page load(BigInteger key) {
         try {
             // kademlia load
             Data data = kademlia.getValueData(key);
             // verify signature
-            Crypto.verify(data.getData(), data.getSignature(), KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(data.getPublicKey())));
-            return data.getData();
+            if (data != null) {
+                Crypto.verify(data.getPage().toBytes(), data.getSignature(), KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(data.getPublicKey())));
+                return data.getPage();
+            } else {
+                return null;
+            }
         } catch (Exception e) {
             e.printStackTrace();
             return null;

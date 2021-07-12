@@ -2,8 +2,11 @@ package huberlin.p2projekt21.gui;
 
 import huberlin.p2projekt21.Helper;
 import huberlin.p2projekt21.controller.Controller;
+import huberlin.p2projekt21.kademlia.Data;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
@@ -11,6 +14,8 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
+import java.text.DateFormat;
+import java.util.Date;
 import java.util.Locale;
 import java.util.ResourceBundle;
 import java.util.concurrent.ExecutionException;
@@ -28,6 +33,10 @@ public class MainGui extends JFrame {
         super();
 
         this.resources = ResourceBundle.getBundle("StringLiterals");
+
+        ownFileTextArea.setEditable(false); // deactivate until own page is loaded
+        htmlPreviewTextArea.setContentType("text/html");
+        friendFileTextArea.setContentType("text/html");
 
         ownKeyTextField.setText("<null>");
         if (ownKey != null) {
@@ -68,19 +77,24 @@ public class MainGui extends JFrame {
             // load inserted stringKey, interpret as hex-integer
             String stringKey = friendKeyTextField.getText();
             BigInteger key = new BigInteger(stringKey, 16);
-            new SwingWorker<byte[], Object>() {
+            new SwingWorker<Data.Page, Object>() {
                 @Override
-                protected byte[] doInBackground() {
+                protected Data.Page doInBackground() {
                     return controller.load(key);
                 }
                 @Override
                 protected void done() {
                     try {
-                        byte[] result = get();
-                        if (result == null) {
+                        Data.Page page = get();
+                        if (page == null) {
                             friendFileTextArea.setText(resources.getString("search_failed"));
+                            dateTextField.setText("");
                         } else {
-                            friendFileTextArea.setText(new String(result));
+                            String content = new String(page.getData());
+                            friendFileTextArea.setText(content);
+                            DateFormat df = DateFormat.getDateTimeInstance(DateFormat.LONG, DateFormat.SHORT);
+                            String formattedDate = df.format(new Date(page.getTimeStamp()));
+                            dateTextField.setText(formattedDate);
                         }
                     } catch (InterruptedException | ExecutionException e) {
                         e.printStackTrace();
@@ -89,6 +103,23 @@ public class MainGui extends JFrame {
                     searchButton.setEnabled(true);
                 }
             }.execute();
+        });
+
+        ownFileTextArea.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                updatePreview();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                updatePreview();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                updatePreview();
+            }
         });
 
         // WINDOW //
@@ -126,6 +157,21 @@ public class MainGui extends JFrame {
 
         this.setContentPane(mainPanel);
         this.setVisible(true);
+
+        // center divider of split pane
+        splitPane.setDividerLocation(splitPane.getSize().width/2);
+    }
+
+    public void setOwnPage(Data.Page page) {
+        if (page != null) {
+            ownFileTextArea.setText(new String(page.getData()));
+        }
+        ownFileTextArea.setEditable(true);
+    }
+
+    private void updatePreview() {
+        String content = ownFileTextArea.getText();
+        htmlPreviewTextArea.setText(content);
     }
 
     private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
@@ -144,6 +190,9 @@ public class MainGui extends JFrame {
     private JButton searchButton;
     private JTextField ownKeyTextField;
     private JButton uploadButton;
-    private JTextArea ownFileTextArea;
-    private JTextArea friendFileTextArea;
+    private JTextPane ownFileTextArea;
+    private JTextPane friendFileTextArea;
+    private JTextPane htmlPreviewTextArea;
+    private JSplitPane splitPane;
+    private JTextField dateTextField;
 }

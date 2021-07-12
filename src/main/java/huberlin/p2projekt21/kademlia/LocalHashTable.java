@@ -35,7 +35,7 @@ public class LocalHashTable {
 
     public void store(Data data) throws IOException, InvalidKeySpecException, NoSuchAlgorithmException {
         localStorage.add(data.getKeyHash());
-        Storage.store(data.getKeyHash(), data.getData(), data.getSignature(), data.getPublicKey());
+        Storage.store(data.getKeyHash(), data.getPage().toBytes(), data.getSignature(), data.getPublicKey());
     }
 
 }

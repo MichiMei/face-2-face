@@ -280,12 +280,12 @@ public class KademliaInstance implements Runnable{
     public byte[] getValue(BigInteger key) throws Exception {
         logger.info("getValue(" + key.toString(16) + ")");
         // search locally
-        byte[] value = localHashTable.load(key).getData();
+        byte[] value = localHashTable.load(key).getPage().toBytes();
         if (value == null) {
             // not found locally -> search in network
             logger.info("search in network");
             Data tmp = valueLookup(key);
-            if (tmp != null) value = tmp.getData();
+            if (tmp != null) value = tmp.getPage().toBytes();
         } else {
             logger.info("found locally");
         }
@@ -332,7 +332,7 @@ public class KademliaInstance implements Runnable{
     public boolean store(BigInteger key, byte[] value) throws Exception {
         logger.info("store(" + key.toString(16) + ")");
         // store locally
-        localHashTable.store(new Data(value, null, null));
+        localHashTable.store(new Data(value, null, null, System.currentTimeMillis()));
         // store in network
         List<KademliaNode> nodes = nodeLookup(key);
         if (nodes == null || nodes.size() == 0) {
