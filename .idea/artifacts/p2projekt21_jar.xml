@@ -1,0 +1,11 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="p2projekt21:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/p2projekt21_jar</output-path>
+    <root id="archive" name="p2projekt21.jar">
+      <element id="module-output" name="p2projekt21" />
+      <element id="directory" name="META-INF">
+        <element id="file-copy" path="$PROJECT_DIR$/src/main/java/META-INF/MANIFEST.MF" />
+      </element>
+    </root>
+  </artifact>
+</component>
