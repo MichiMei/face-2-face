@@ -152,6 +152,18 @@ public class KBuckets {
         return dist.bitLength()-1;
     }
 
+    /**
+     * Checks, if the given node is already in a kBucket (or cache)
+     *
+     * @param node node id
+     * @return true if in a kBucket or cache, false otherwise
+     */
+    public boolean contained(BigInteger node) {
+        int id = bucketID(node);
+        if (id == -1) return true;
+        return buckets[id].contained(node);
+    }
+
     public static class KBucket {
         private final int bucketLength;
 
@@ -284,6 +296,26 @@ public class KBuckets {
                 if (node.inactiveSince(time)) result.add(node.node);
             }
             return result;
+        }
+
+        /**
+         * Checks, if the given node is already in this kBucket (or its cache)
+         *
+         * @param node node id
+         * @return true if in a kBucket or cache, false otherwise
+         */
+        public synchronized boolean contained(BigInteger node) {
+            for (NodeValues elem : elements) {
+                if (elem.getId().equals(node)) {
+                    return true;
+                }
+            }
+            for (NodeValues nodeValues : cache) {
+                if (nodeValues != null && nodeValues.getId().equals(node)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public static class NodeValues implements Comparable<NodeValues> {

@@ -606,8 +606,8 @@ public class KademliaInstance implements Runnable{
 
                 for (KademliaNode node : nodeList) {
                     if (node.getId().equals(ownID)) continue;   // skip own id
-                    // send ping -> node is only added, if it answers
-                    sendPing(node);
+                    // send ping -> node is only added, if it answers (only if not already known)
+                    pingAndAddToKBuckets(node);
                     // add to closest (if not present)
                     closest.putIfAbsent(node, (long) 0);
                     logger.info("added to closest: " + node.getId().toString(16));
@@ -739,8 +739,8 @@ public class KademliaInstance implements Runnable{
 
                         for (KademliaNode node : nodeList) {
                             if (node.getId().equals(ownID)) continue;   // skip own id
-                            // send ping -> node is only added, if it answers
-                            sendPing(node);
+                            // send ping -> node is only added, if it answers (only send ping if not already known)
+                            pingAndAddToKBuckets(node);
                             // add to closest (if not present)
                             closest.putIfAbsent(node, (long) 0);
                             logger.info("added to closest: " + node.getId().toString(16));
@@ -803,6 +803,18 @@ public class KademliaInstance implements Runnable{
         kBuckets.nodeLookupPerformed(key);
         lookupChannels.remove(lookupId);
         return currentData;
+    }
+
+    /**
+     * Checks if the given id is already in a kBucket
+     * If not, pings the peer to add it automatically in the kBucket if (and only if) it answers
+     *
+     * @param node Node to add to kBucket
+     */
+    private void pingAndAddToKBuckets(KademliaNode node) {
+        if (!kBuckets.contained(node.getId())) {
+            sendPing(node);
+        }
     }
 
     /**
