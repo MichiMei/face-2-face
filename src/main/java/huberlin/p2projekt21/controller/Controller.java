@@ -259,14 +259,15 @@ public class Controller {
             System.err.println("shutting down");
             System.exit(-1);
         }
-        Thread.sleep(5*1000);   // wait 5 seconds until network is created
+        Thread.sleep(20*1000);   // wait 5 seconds until network is created
 
         List<Path> keys = Files.walk(dir)
                 .filter(Files::isRegularFile)
-                .filter(path -> path.getFileName().toString().endsWith(".pub"))
+                .filter(path -> path.getFileName().toString().endsWith(".key"))
                 .collect(Collectors.toList());
 
         for (Path key : keys) {
+            System.out.println("read file: " + key.toString());
             byte[] keyBytes = Files.readAllBytes(key);
             byte[][] data = Storage.read(keyBytes);
             if (data == null) {

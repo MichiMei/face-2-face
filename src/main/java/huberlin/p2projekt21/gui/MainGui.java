@@ -75,7 +75,19 @@ public class MainGui extends JFrame {
             searchButton.setEnabled(false);
             // load inserted stringKey, interpret as hex-integer
             String stringKey = friendKeyTextField.getText();
-            BigInteger key = new BigInteger(stringKey, 16);
+            if (stringKey.trim().length() == 0) {
+                friendFileTextArea.setText(resources.getString("bad_key"));
+                searchButton.setEnabled(true);
+                return;
+            }
+            BigInteger key;
+            try {
+                key = new BigInteger(stringKey, 16);
+            } catch (NumberFormatException ignore) {
+                friendFileTextArea.setText(resources.getString("bad_key"));
+                searchButton.setEnabled(true);
+                return;
+            }
             new SwingWorker<Data.Page, Object>() {
                 @Override
                 protected Data.Page doInBackground() {
