@@ -12,6 +12,7 @@ import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
 import java.text.DateFormat;
@@ -50,7 +51,8 @@ public class MainGui extends JFrame {
             new SwingWorker<Boolean, Object>() {
                 @Override
                 protected Boolean doInBackground() {
-                    return controller.store(text.getBytes());
+                    // use standardised encoding to prevent encoding problems with different OS
+                    return controller.store(text.getBytes(StandardCharsets.UTF_8));
                 }
                 @Override
                 protected void done() {
@@ -102,7 +104,9 @@ public class MainGui extends JFrame {
                             friendFileTextArea.setContentType("text/plain");
                             dateTextField.setText("");
                         } else {
-                            String content = new String(page.getData());
+                            // use standardised encoding to prevent encoding problems with different OS
+                            String content = new String(page.getData(), StandardCharsets.UTF_8);
+                            //String content = new String(page.getData());
                             if (content.toLowerCase().contains("<html>")) {
                                 friendFileTextArea.setContentType("text/html");
                             } else {
@@ -181,7 +185,8 @@ public class MainGui extends JFrame {
 
     public void setOwnPage(Data.Page page) {
         if (page != null) {
-            ownFileTextArea.setText(new String(page.getData()));
+            // use standardised encoding to prevent encoding problems with different OS
+            ownFileTextArea.setText(new String(page.getData(), StandardCharsets.UTF_8));
         }
         ownFileTextArea.setEditable(true);
     }
