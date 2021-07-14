@@ -56,20 +56,6 @@ public class MessageConstants {
         return in[0] << 24 | (in[1] & 0xFF) << 16 | (in[2] & 0xFF) << 8 | (in[3] & 0xFF);
     }
 
-    public static byte[] bigIntToByteArray(BigInteger bigInt, int length){
-        byte[] out = new byte[length];
-        byte[] bigIntArr = bigInt.toByteArray();
-        int arrLen = bigIntArr.length;
-
-        if(bigIntArr.length == length){
-            return bigIntArr;
-        }else if (bigIntArr.length < length){
-            System.arraycopy(bigIntArr, 0,out, length-arrLen, arrLen);
-        }else{
-            System.arraycopy(bigIntArr, 1, out, 0, length);
-        }
-        return out;
-    }
     public static byte[] copyOf(byte[] in, int length){
         byte[] out = new byte[length];
         if (in.length == length){

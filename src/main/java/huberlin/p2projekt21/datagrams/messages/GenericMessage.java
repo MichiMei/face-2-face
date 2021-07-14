@@ -1,4 +1,5 @@
 package huberlin.p2projekt21.datagrams.messages;
+import huberlin.p2projekt21.Helper;
 import huberlin.p2projekt21.datagrams.helpers.MessageConstants;
 import huberlin.p2projekt21.datagrams.helpers.PayloadConverter;
 
@@ -68,7 +69,7 @@ public class GenericMessage {
             if(!MessageConstants.hasLessThan20Bytes(randomID)){
                 throw new ArrayIndexOutOfBoundsException();
             }
-            this.randomID = MessageConstants.bigIntToByteArray(randomID, this.randomID.length);
+            this.randomID = Helper.bigIntToByteArray(randomID, this.randomID.length);
         }catch(Exception e){
             System.err.println("RandomID BigInteger zu groß!");
             e.printStackTrace();
@@ -87,7 +88,7 @@ public class GenericMessage {
             if (!MessageConstants.hasLessThan32Bytes(senderNodeID)){
                 throw new ArrayIndexOutOfBoundsException();
             }else {
-                this.senderNodeID = MessageConstants.bigIntToByteArray(senderNodeID, this.senderNodeID.length);
+                this.senderNodeID = Helper.bigIntToByteArray(senderNodeID, this.senderNodeID.length);
             }
         }catch(Exception e){
             System.err.println("SenderNodeID BigInteger zu groß!");

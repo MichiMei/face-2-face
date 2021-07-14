@@ -53,10 +53,54 @@ public class Helper {
 
     /**
      * Generate new RandomID
+     *
      * @return new RandomID
      */
     public static BigInteger getRandomID() {
         return new BigInteger(KademliaInstance.RANDOM_ID_LENGTH, random);
+    }
+
+    private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
+
+    /**
+     * Transforms byte array into hex string
+     * <p>
+     * Source: maybeWeCouldStealAVan,
+     * https://stackoverflow.com/questions/9655181/how-to-convert-a-byte-array-to-a-hex-string-in-java
+     *
+     * @param bytes byte array
+     * @return Hex-string representation
+     */
+    public static String bytesToHex(byte[] bytes) {
+        char[] hexChars = new char[bytes.length * 2];
+        for (int j = 0; j < bytes.length; j++) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = HEX_ARRAY[v >>> 4];
+            hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
+        }
+        return new String(hexChars);
+    }
+
+    /**
+     * Converts BigInteger to byte array
+     *
+     * @param bigInt BigInteger to be converted
+     * @param length length of resulting byte array
+     * @return byte array
+     */
+    public static byte[] bigIntToByteArray(BigInteger bigInt, int length) {
+        byte[] out = new byte[length];
+        byte[] bigIntArr = bigInt.toByteArray();
+        int arrLen = bigIntArr.length;
+
+        if (bigIntArr.length == length) {
+            return bigIntArr;
+        } else if (bigIntArr.length < length) {
+            System.arraycopy(bigIntArr, 0, out, length - arrLen, arrLen);
+        } else {
+            System.arraycopy(bigIntArr, 1, out, 0, length);
+        }
+        return out;
     }
 
 }

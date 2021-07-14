@@ -18,20 +18,19 @@ import java.security.spec.X509EncodedKeySpec;
  */
 public class Storage {
 
-
     /**
      * Stores the data, signature and signature for a public key in files named after the hash of said key
-     *
+     * <p>
      * changed to private to prevent different hashes of same keys
      * now only SHA256(PublicKey).hashCode() is allowed
      *
-     * @param keyHash   Hash of the public key used for store
-     * @param data      Data which shall be stored on local machine
-     * @param signature Signature of the data
-     * @param key       Public Key of the data
+     * @param hashString hex string of public key hash
+     * @param data       Data which shall be stored on local machine
+     * @param signature  Signature of the data
+     * @param key        Public Key of the data
      * @throws IOException .
      */
-    private static void store(int keyHash, byte[] data, byte[] signature, byte[] key) throws IOException {
+    private static void store(String hashString, byte[] data, byte[] signature, byte[] key) throws IOException {
         String DATA_PATH = PropertiesSingleton.getInstance().get("DATA_PATH");
         String DATA_FILE_NAME_TEMPLATE = PropertiesSingleton.getInstance().get("DATA_FILE_NAME_TEMPLATE");
         String SIGNATURE_FILE_NAME_TEMPLATE = PropertiesSingleton.getInstance().get("SIGNATURE_FILE_NAME_TEMPLATE");
@@ -40,9 +39,9 @@ public class Storage {
         Path dataDirP = Paths.get(DATA_PATH);
         if (!Files.exists(dataDirP)) Files.createDirectories(dataDirP);
 
-        Path dataP = Paths.get(DATA_PATH + DATA_FILE_NAME_TEMPLATE.replace("ID", Integer.toString(keyHash)));
-        Path sigP = Paths.get(DATA_PATH + SIGNATURE_FILE_NAME_TEMPLATE.replace("ID", Integer.toString(keyHash)));
-        Path keyP = Paths.get(DATA_PATH + KEY_FILE_NAME_TEMPLATE.replace("ID", Integer.toString(keyHash)));
+        Path dataP = Paths.get(DATA_PATH + DATA_FILE_NAME_TEMPLATE.replace("ID", hashString));
+        Path sigP = Paths.get(DATA_PATH + SIGNATURE_FILE_NAME_TEMPLATE.replace("ID", hashString));
+        Path keyP = Paths.get(DATA_PATH + KEY_FILE_NAME_TEMPLATE.replace("ID", hashString));
 
         Files.write(dataP, data);
         Files.write(sigP, signature);
@@ -60,8 +59,9 @@ public class Storage {
     public static void store(byte[] key, byte[] data, byte[] signature) throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
         //int hashCode = Crypto.getPublicKeyHash(key);
         PublicKey publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(key));
-        int hashCode = Helper.bigIntHashForKey(publicKey).hashCode();
-        store(hashCode, data, signature, key);
+        byte[] hashCode = Helper.hashForKey(publicKey);
+        String hashString = Helper.bytesToHex(hashCode);
+        store(hashString, data, signature, key);
     }
 
     /**
@@ -73,8 +73,9 @@ public class Storage {
      * @throws IOException .
      */
     public static void store(BigInteger keyHash, byte[] data, byte[] signature, byte[] key) throws IOException {
-        int hashCode = keyHash.hashCode();
-        store(hashCode, data, signature, key);
+        byte[] hashCode = Helper.bigIntToByteArray(keyHash, 32);
+        String hashString = Helper.bytesToHex(hashCode);
+        store(hashString, data, signature, key);
     }
 
     /**
@@ -91,11 +92,12 @@ public class Storage {
         String DATA_PATH = PropertiesSingleton.getInstance().get("DATA_PATH");
         //int ownId = Crypto.getStoredPublicKey().hashCode();
         PublicKey ownKey = Crypto.getStoredPublicKey();
-        int ownId = Helper.bigIntHashForKey(ownKey).hashCode();
+        byte[] hashCode = Helper.hashForKey(ownKey);
+        String hashString = Helper.bytesToHex(hashCode);
 
         byte[] signature = Crypto.signWithStoredKey(data);
 
-        store(ownId, data, signature, ownKey.getEncoded());
+        store(hashString, data, signature, ownKey.getEncoded());
     }
 
     /**
@@ -104,19 +106,19 @@ public class Storage {
      * changed to private to prevent different hashes of same keys
      * now only SHA256(PublicKey).hashCode() is allowed
      *
-     * @param keyHash Hash of the public key used for lookup
+     * @param hashString Hex string of hash of the public key used for lookup
      * @return null if no file was found or an array containing the data, signature and key (in this order)
      * @throws IOException .
      */
-    private static byte[][] read(int keyHash) throws IOException {
+    private static byte[][] read(String hashString) throws IOException {
         String DATA_PATH = PropertiesSingleton.getInstance().get("DATA_PATH");
         String DATA_FILE_NAME_TEMPLATE = PropertiesSingleton.getInstance().get("DATA_FILE_NAME_TEMPLATE");
         String SIGNATURE_FILE_NAME_TEMPLATE = PropertiesSingleton.getInstance().get("SIGNATURE_FILE_NAME_TEMPLATE");
         String KEY_FILE_NAME_TEMPLATE = PropertiesSingleton.getInstance().get("KEY_FILE_NAME_TEMPLATE");
 
-        Path dataP = Paths.get(DATA_PATH + DATA_FILE_NAME_TEMPLATE.replace("ID", Integer.toString(keyHash)));
-        Path sigP = Paths.get(DATA_PATH + SIGNATURE_FILE_NAME_TEMPLATE.replace("ID", Integer.toString(keyHash)));
-        Path keyP = Paths.get(DATA_PATH + KEY_FILE_NAME_TEMPLATE.replace("ID", Integer.toString(keyHash)));
+        Path dataP = Paths.get(DATA_PATH + DATA_FILE_NAME_TEMPLATE.replace("ID", hashString));
+        Path sigP = Paths.get(DATA_PATH + SIGNATURE_FILE_NAME_TEMPLATE.replace("ID", hashString));
+        Path keyP = Paths.get(DATA_PATH + KEY_FILE_NAME_TEMPLATE.replace("ID", hashString));
 
         if (Files.exists(dataP) && Files.exists(sigP) && Files.exists(keyP)) {
             byte[] data = Files.readAllBytes(dataP);
@@ -138,8 +140,9 @@ public class Storage {
     public static byte[][] read(byte[] key) throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
         //int hashCode = Crypto.getPublicKeyHash(key);
         PublicKey publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(key));
-        int hashCode = Helper.bigIntHashForKey(publicKey).hashCode();
-        return read(hashCode);
+        byte[] hashCode = Helper.hashForKey(publicKey);
+        String hashString = Helper.bytesToHex(hashCode);
+        return read(hashString);
     }
 
     /**
@@ -150,7 +153,8 @@ public class Storage {
      * @throws IOException .
      */
     public static byte[][] read(BigInteger keyHash) throws IOException {
-        int hashCode = keyHash.hashCode();
-        return read(hashCode);
+        byte[] hashCode = Helper.bigIntToByteArray(keyHash, 32);
+        String hashString = Helper.bytesToHex(hashCode);
+        return read(hashString);
     }
 }

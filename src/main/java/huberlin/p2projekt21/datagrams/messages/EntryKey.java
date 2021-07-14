@@ -1,5 +1,6 @@
 package huberlin.p2projekt21.datagrams.messages;
 
+import huberlin.p2projekt21.Helper;
 import huberlin.p2projekt21.datagrams.helpers.MessageConstants;
 
 import java.math.BigInteger;
@@ -32,7 +33,7 @@ public class EntryKey implements IPayload{
             if (!MessageConstants.hasLessThan32Bytes(entryKey)) {
                 throw new ArrayIndexOutOfBoundsException();
             } else {
-                this.EntryKey = MessageConstants.bigIntToByteArray(entryKey, this.EntryKey.length);
+                this.EntryKey = Helper.bigIntToByteArray(entryKey, this.EntryKey.length);
             }
         } catch (Exception e) {
             System.err.println("BigInteger zu groß für EntryKey!");

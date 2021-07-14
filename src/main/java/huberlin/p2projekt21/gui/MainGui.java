@@ -41,7 +41,7 @@ public class MainGui extends JFrame {
         ownKeyTextField.setText("<null>");
         if (ownKey != null) {
             byte[] hash = Helper.hashForKey(ownKey);
-            if (hash != null) ownKeyTextField.setText(bytesToHex(hash));
+            if (hash != null) ownKeyTextField.setText(Helper.bytesToHex(hash));
         }
 
         uploadButton.addActionListener(e -> {
@@ -201,26 +201,6 @@ public class MainGui extends JFrame {
         htmlPreviewTextArea.setText(content);
     }
 
-
-    private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
-    /**
-     * Transforms byte array into hex string
-     *
-     * Source: maybeWeCouldStealAVan,
-     * https://stackoverflow.com/questions/9655181/how-to-convert-a-byte-array-to-a-hex-string-in-java
-     *
-     * @param bytes byte array
-     * @return Hex-string representation
-     */
-    private static String bytesToHex(byte[] bytes) {
-        char[] hexChars = new char[bytes.length * 2];
-        for (int j = 0; j < bytes.length; j++) {
-            int v = bytes[j] & 0xFF;
-            hexChars[j * 2] = HEX_ARRAY[v >>> 4];
-            hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
-        }
-        return new String(hexChars);
-    }
 
     private JPanel mainPanel;
     private JTextField friendKeyTextField;

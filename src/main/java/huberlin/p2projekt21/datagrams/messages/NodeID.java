@@ -1,5 +1,6 @@
 package huberlin.p2projekt21.datagrams.messages;
 
+import huberlin.p2projekt21.Helper;
 import huberlin.p2projekt21.datagrams.helpers.MessageConstants;
 
 import java.math.BigInteger;
@@ -20,7 +21,7 @@ public class NodeID implements IPayload{
             if(!MessageConstants.hasLessThan32Bytes(nodeID)){
                 throw new ArrayIndexOutOfBoundsException();
             }else{
-                this.NodeID = MessageConstants.bigIntToByteArray(nodeID, MessageConstants.NODEID_SIZE_BYTES);
+                this.NodeID = Helper.bigIntToByteArray(nodeID, MessageConstants.NODEID_SIZE_BYTES);
             }
         }catch (Exception e){
             System.err.println("BigInteger zu groß für NodeID!");
